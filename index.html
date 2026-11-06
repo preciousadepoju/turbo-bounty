@@ -1994,10 +1994,17 @@ function animate(){
       const fp=(state==='carselect'&&previewCar)?previewCar.position:(player?player.pos:null);
       if(fp){ moon.target.position.copy(fp); moon.position.set(fp.x+o[0], o[1], fp.z+o[2]); } }
     // engine sound
-    if(engGain && engOsc){ const spd=player?player.speed:0; const rpm=40+clamp(spd/CFG.MAX_SPEED,0,1.3)*160;
-      engOsc.frequency.setTargetAtTime(rpm,AC.currentTime,0.05); engOsc2.frequency.setTargetAtTime(rpm*1.5,AC.currentTime,0.05);
-      engFilter.frequency.setTargetAtTime(400+spd*8,AC.currentTime,0.05);
-      engGain.gain.setTargetAtTime(state==='playing'?0.08:0.0,AC.currentTime,0.1); }
+    if(engGain && engOsc){ const spd=player?player.speed:0, sr=clamp(spd/CFG.MAX_SPEED,0,1);
+      // 5-gear RPM: revs climb within a gear, then drop on the "shift" to the next
+      const GEARS=5, g=Math.min(GEARS-1,Math.floor(sr*GEARS)), within=sr*GEARS-g;
+      const boost=(player&&player.boostT>0)?1.12:1;
+      const rpm=(48 + g*7 + within*120)*boost;           // base per gear + sweep
+      const tc=AC.currentTime;
+      engOsc.frequency.setTargetAtTime(rpm,tc,0.04);
+      engOsc2.frequency.setTargetAtTime(rpm*1.5,tc,0.04);
+      engFilter.frequency.setTargetAtTime(320+rpm*6,tc,0.05);   // brighter as it revs
+      const vol=state==='playing'?(0.055+sr*0.055):0.0;
+      engGain.gain.setTargetAtTime(vol,tc,0.08); }
   }catch(e){ if(!errLogged){ console.error('loop error',e); errLogged=true; } }
   updatePerf();
   if(useBloom && composer) composer.render(); else renderer.render(scene,camera);
