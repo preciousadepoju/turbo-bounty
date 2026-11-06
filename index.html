@@ -479,6 +479,7 @@ addEventListener('keydown',e=>{
   }
   if(k==='escape') togglePause();
   if(k==='m') toggleMute();
+  if(k==='f'){ fpsLog=!fpsLog; console.log('[TURBO BOUNTY] FPS logging '+(fpsLog?'ON — numbers below':'OFF')); }
   if(k==='t' && state!=='results') { TRAILER=!TRAILER; applyTrailer(); banner(TRAILER?'TRAILER MODE ON':'TRAILER MODE OFF', '#ffcf3a'); }
   if(k==='enter'){ if(state==='title') el('careerBtn').click(); else if(state==='results') el('restartBtn').click(); }
   initAudioOnce();
@@ -1785,6 +1786,7 @@ function slowmo(){ slowmoT=0.3; }
 
 /* Adaptive resolution — keeps the frame-rate smooth by trading a little sharpness
    when the GPU is struggling, and restoring it when there's headroom. */
+let fpsLog=false;
 const perf={frames:0,last:undefined,pr:Math.min(devicePixelRatio,QUALITY.pixelRatioCap),min:0.55};
 function applyPixelRatio(){
   renderer.setPixelRatio(perf.pr);
@@ -1797,6 +1799,7 @@ function updatePerf(){
   if(perf.last===undefined){ perf.last=now; return; }
   if(now-perf.last>=800){
     const fps=perf.frames*1000/(now-perf.last); perf.frames=0; perf.last=now;
+    if(fpsLog) console.log('[TURBO BOUNTY] '+fps.toFixed(0)+' fps  ·  render scale '+perf.pr.toFixed(2)+'x  ·  '+state);
     const cap=Math.min(devicePixelRatio,QUALITY.pixelRatioCap);
     let np=perf.pr;
     if(fps<55) np=Math.max(perf.min, perf.pr-0.14);          // struggling -> drop resolution faster
