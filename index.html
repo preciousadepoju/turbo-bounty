@@ -438,6 +438,8 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 const UP = V3(0,1,0);
 const _s1=new THREE.Vector3(), _s2=new THREE.Vector3(); // reusable scratch (avoid per-frame allocations)
+const _col=new THREE.Color(), _col2=new THREE.Color();
+let weather={rain:0,tgtRain:0,tod:0}, weatherGrip=1, willRain=false, rainAtFrac=0.5, rainAnnounced=false;
 
 let renderer, scene, camera, composer, bloomPass, fxaaPass, useBloom=false;
 let moon=null, envRT=null, rainSystem=null, lightningT=6, RoundedBox=null;
@@ -830,7 +832,7 @@ function buildRain(){
   rainSystem={points:new THREE.Points(geo,mat),vel,N}; rainSystem.points.frustumCulled=false; scene.add(rainSystem.points);
 }
 function updateRain(dt){
-  if(!rainSystem) return;
+  if(!rainSystem || !rainSystem.points.visible) return;
   const p=rainSystem.points.geometry.attributes.position, a=p.array, cx=camera.position.x,cy=camera.position.y,cz=camera.position.z;
   for(let i=0;i<rainSystem.N;i++){ a[i*3+1]-=rainSystem.vel[i]*dt; a[i*3]-=dt*18; // wind slant
     if(a[i*3+1]<cy-25 || Math.abs(a[i*3]-cx)>140 || Math.abs(a[i*3+2]-cz)>140){
@@ -838,7 +840,7 @@ function updateRain(dt){
   p.needsUpdate=true;
 }
 function updateLightning(dt){
-  if(!QUALITY.rain) return;   // lightning belongs with the rain
+  if(weather.rain<0.3) return;   // lightning only during an active storm
   lightningT-=dt;
   if(lightningT<=0){ lightningT=rand(7,17);
     const el=el2('lightning'); if(el){ el.style.transition='none'; el.style.opacity='0.85';
@@ -1053,6 +1055,7 @@ function applyTheme(theme){
   w.sky.visible=true; w.scn.visible=true; skyGroup=w.sky; sceneryGroup=w.scn;
   if(themePFX){ scene.remove(themePFX.points); themePFX.points.geometry.dispose(); themePFX.points.material.dispose(); themePFX=null; }
   if(theme.pfx) themePFX=buildThemePFX(theme.pfx);
+  resetWeatherVisuals();
 }
 // instance a repeated prop cheaply (one draw call)
 function instanced(group,geo,mat,list){
@@ -1165,6 +1168,38 @@ function updateThemePFX(dt){
     if(t==='embers'){ if(a[i*3+1]>cy+50||far){ a[i*3]=cx+rand(-100,100); a[i*3+1]=cy-rand(5,30); a[i*3+2]=cz+rand(-100,100);} }
     else if(a[i*3+1]<cy-25||far){ a[i*3]=cx+rand(-110,110); a[i*3+1]=cy+rand(40,90); a[i*3+2]=cz+rand(-110,110); } }
   p.needsUpdate=true;
+}
+// dynamic time-of-day + weather (drives toward dusk/night; rain can roll in mid-race)
+function ensureRain(){ if(rainSystem) return; const save=QUALITY.rain; QUALITY.rain=QUALITY.rain||800; buildRain(); QUALITY.rain=save;
+  if(rainSystem){ rainSystem.points.visible=false; } }
+function updateWeather(dt){
+  if(!currentTheme || !player) return;
+  const total=raceLaps*samples.length;
+  weather.tod=clamp(player.progress/total,0,1);
+  weather.tgtRain=(willRain && weather.tod>rainAtFrac)?1:0;
+  weather.rain += (weather.tgtRain-weather.rain)*clamp(0.6*dt,0,1);   // fade in/out ~2s
+  if(weather.tgtRain>0 && !rainAnnounced){ rainAnnounced=true; announce('RAIN INCOMING','#9fc2e8'); ensureRain(); }
+  const rn=weather.rain, tod=weather.tod;
+  const lf=Math.max(0.46, 1 - 0.3*tod - 0.2*rn);     // darken toward night / storm
+  if(hemi) hemi.intensity=currentTheme.hemiI*lf;
+  if(amb)  amb.intensity=currentTheme.ambI*lf;
+  if(moon) moon.intensity=currentTheme.sunI*lf;
+  if(scene.fog){ scene.fog.density=currentTheme.fogD*(1+0.5*rn+0.25*tod);
+    _col.setHex(currentTheme.fog); _col2.setHex(0x05060f); scene.fog.color.copy(_col).lerp(_col2, clamp(0.5*tod+0.35*rn,0,1)); }
+  if(skyGroup && skyGroup.children[0] && skyGroup.children[0].material){ const d=clamp(0.5*tod+0.3*rn,0,0.75);
+    skyGroup.children[0].material.color.setRGB(1-d,1-d,1-d*0.85); }
+  if(roadMat) roadMat.roughness=currentTheme.roadRough*(1-0.55*rn);   // wet = reflective
+  weatherGrip = 1 - 0.28*rn;                                          // slippery in the rain
+  if(rainSystem){ rainSystem.points.visible=rn>0.03; rainSystem.points.material.opacity=rn*0.5; }
+}
+function resetWeatherVisuals(){
+  weather.rain=0; weather.tgtRain=0; weather.tod=0; weatherGrip=1; rainAnnounced=false;
+  if(!currentTheme) return;
+  if(hemi) hemi.intensity=currentTheme.hemiI; if(amb) amb.intensity=currentTheme.ambI; if(moon) moon.intensity=currentTheme.sunI;
+  if(scene.fog){ scene.fog.density=currentTheme.fogD; scene.fog.color.set(currentTheme.fog); }
+  if(roadMat) roadMat.roughness=currentTheme.roadRough;
+  if(skyGroup && skyGroup.children[0] && skyGroup.children[0].material) skyGroup.children[0].material.color.setRGB(1,1,1);
+  if(rainSystem) rainSystem.points.visible=false;
 }
 function computeMiniPts(){
   let minX=1e9,maxX=-1e9,minZ=1e9,maxZ=-1e9;
@@ -1391,7 +1426,7 @@ class Car{
       else if(throttle<0){ if(fAmt>0) fAmt-=CFG.BRAKE*dt; else fAmt-=CFG.ACCEL*0.6*dt; }
       fAmt-=fAmt*CFG.DRAG*dt;
       fAmt=clamp(fAmt,-CFG.REVERSE_SPEED,maxSpd);
-      const grip=handbrake?CFG.DRIFT_GRIP:CFG.GRIP;
+      const grip=(handbrake?CFG.DRIFT_GRIP:CFG.GRIP)*weatherGrip;
       latVec.multiplyScalar(Math.max(0,1-grip*dt));
       const spdFactor=clamp(Math.abs(fAmt)/18,0,1);
       const dirSign=fAmt>=0?1:-1;
@@ -1949,6 +1984,7 @@ function startCountdown(){
     if(n>0){ popCount(n); tone(440,0.15,'square',0.2); }
     else if(n===0){ popCount('GO!'); tone(880,0.4,'square',0.25); }
     else { clearInterval(iv); cd.classList.add('hidden'); state='playing'; raceStartClock=performance.now(); lapStartTime=raceStartClock; lastLapTime=0; prevLeaderIsPlayer=false;
+      weather.rain=0; weather.tgtRain=0; weather.tod=0; weatherGrip=1; willRain=Math.random()<0.35; rainAtFrac=rand(0.3,0.6); rainAnnounced=false;
       // launch: engines bark and the camera kicks, but speed builds naturally (no instant boost)
       sfx.boost(); camShakeAdd(0.5); camera.fov=84; camera.updateProjectionMatrix();
     } },800);
@@ -2065,6 +2101,7 @@ function step(dt){
   carCollisions();
   updateBullets(dt);
   updateRanking(dt);
+  updateWeather(dt);
   updateCamera(dt);
   updateHUD();
 }
@@ -2093,7 +2130,7 @@ function startCareer(){ initAudioOnce(); setNameFromInput(); gameMode='career'; 
 function startQuick(){ initAudioOnce(); setNameFromInput(); gameMode='quick'; champActive=false; aiDifficulty=0; openSelect(); }
 function startRound(r){ champRound=r; aiDifficulty=THEMES.length>1?r/(THEMES.length-1):0; applyTheme(THEMES[r]);
   el('results').classList.add('hidden'); startCountdown(); }
-function goTitle(){ state='title'; champActive=false; renderBests();
+function goTitle(){ state='title'; champActive=false; renderBests(); resetWeatherVisuals();
   if(el('nameInput') && playerName && playerName!=='YOU') el('nameInput').value=playerName;  // keep the name — don't ask again
   el('results').classList.add('hidden'); el('hud').classList.add('hidden'); el('title').classList.remove('hidden'); }
 
