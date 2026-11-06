@@ -161,6 +161,10 @@
   .ts-card .c-place{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--neon-cyan);margin-top:3px;}
   .ts-card .c-desc{font-size:12px;line-height:1.45;color:#c3d0ea;margin-top:9px;font-weight:normal;min-height:52px;}
   .ts-swatch{height:6px;border-radius:4px;margin-top:4px;}
+  .cs-car{height:60px;border-radius:16px 16px 9px 9px;margin:2px 0 12px;position:relative;
+    box-shadow:0 0 26px currentColor, inset 0 -12px 22px rgba(0,0,0,.45), inset 0 4px 10px rgba(255,255,255,.25);}
+  .cs-car::before{content:"";position:absolute;left:22%;right:22%;top:9px;height:20px;border-radius:7px;background:rgba(8,10,18,.8);}
+  .cs-car::after{content:"";position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:34%;height:5px;border-radius:3px;background:rgba(255,255,255,.55);}
   .ts-hint{position:absolute;bottom:5vh;left:50%;transform:translateX(-50%);font-size:13px;letter-spacing:2px;
     color:#9fb6e8;font-weight:bold;white-space:nowrap;}
   #count{font-size:clamp(90px,26vw,260px);font-weight:900;color:#fff;
@@ -217,10 +221,6 @@
     <div id="hpWrap" class="barwrap"><div class="barlabel">Hull</div><div class="bar"><div id="hpFill" class="fill"></div></div></div>
     <div id="heatWrap" class="barwrap"><div class="barlabel">Gun Heat</div><div class="bar"><div id="heatFill" class="fill"></div></div></div>
   </div>
-  <div id="item" class="panel">
-    <div id="itemBox">—</div>
-    <div id="itemName"></div>
-  </div>
   <div id="speedo" class="panel"><div id="kmh">0<small> km/h</small></div></div>
   <div id="banner"></div>
 </div>
@@ -228,7 +228,6 @@
 <div id="touch">
   <div id="stick"><div id="nub"></div></div>
   <div id="tFire" class="tbtn">FIRE</div>
-  <div id="tItem" class="tbtn">ITEM</div>
   <div id="tBrake" class="tbtn">DRIFT</div>
 </div>
 
@@ -244,7 +243,6 @@
   <div id="ctrlbar">
     <span class="grp"><kbd>WASD</kbd><span class="slash">/</span><kbd class="arrows">↑↓←→</kbd> Drive</span>
     <span class="grp"><kbd>Space</kbd> Shoot</span>
-    <span class="grp"><kbd>Shift</kbd> Item</span>
     <span class="grp"><kbd>C</kbd> Drift</span>
     <span class="grp"><kbd>T</kbd> Trailer</span>
     <span class="sep">On-screen <button id="ctrlToggle" class="miniBtn">AUTO</button></span>
@@ -255,7 +253,13 @@
 <div id="trackselect" class="screen hidden">
   <div class="ts-title">SELECT LOCATION</div>
   <div id="tsCards"></div>
-  <div class="ts-hint">◀ ▶ browse&nbsp;·&nbsp;ENTER to race&nbsp;·&nbsp;ESC back&nbsp;·&nbsp;or click a card</div>
+  <div class="ts-hint">◀ ▶ browse&nbsp;·&nbsp;ENTER next&nbsp;·&nbsp;ESC back&nbsp;·&nbsp;or click a card</div>
+</div>
+
+<div id="carselect" class="screen hidden">
+  <div class="ts-title">SELECT CAR</div>
+  <div id="csCards"></div>
+  <div class="ts-hint">◀ ▶ browse&nbsp;·&nbsp;ENTER to race&nbsp;·&nbsp;ESC back&nbsp;·&nbsp;or click a car</div>
 </div>
 
 <div id="countdown" class="screen hidden"><div id="count">3</div></div>
@@ -388,6 +392,13 @@ addEventListener('keydown',e=>{
     else if(k==='escape') backToTitle();
     initAudioOnce(); return;
   }
+  if(state==='carselect'){
+    if(k==='arrowleft'||k==='a') csMove(-1);
+    else if(k==='arrowright'||k==='d') csMove(1);
+    else if(k==='enter'||k===' ') csChoose();
+    else if(k==='escape') carBackToTracks();
+    initAudioOnce(); return;
+  }
   if(k==='escape') togglePause();
   if(k==='m') toggleMute();
   if(k==='t' && state!=='results') { TRAILER=!TRAILER; applyTrailer(); banner(TRAILER?'TRAILER MODE ON':'TRAILER MODE OFF', '#ffcf3a'); }
@@ -432,11 +443,11 @@ function setupControls(){
   stick.addEventListener('pointerup',release);
   stick.addEventListener('pointercancel',release);
   stick.addEventListener('lostpointercapture',release);
-  const bind=(id,prop)=>{const el=document.getElementById(id);
+  const bind=(id,prop)=>{const el=document.getElementById(id); if(!el) return;
     el.addEventListener('pointerdown',e=>{e.preventDefault();touch[prop]=true;initAudioOnce();});
     const up=e=>{e.preventDefault();touch[prop]=false;};
     el.addEventListener('pointerup',up); el.addEventListener('pointerleave',up); el.addEventListener('pointercancel',up);};
-  bind('tFire','fire'); bind('tItem','item'); bind('tBrake','brake');
+  bind('tFire','fire'); bind('tBrake','brake');
   applyControlsVisibility();
 }
 function readOnScreen(){
@@ -1053,6 +1064,13 @@ function worldToMini(x,z){
    ===================================================================== */
 const AI_NAMES=['NITRO NANA','SPEEDY JOE','MAX TORQUE','LADY LUXE','EL DIABLO'];
 const CAR_COLORS=[0x17e6ff,0xff2bd6,0xffcf3a,0x5dff8f,0xff6a3d,0x9b6bff];
+// player car choices
+const CAR_CHOICES=[
+  {name:'AZURE',color:0x17e6ff}, {name:'INFERNO',color:0xff6a3d}, {name:'VENOM',color:0x5dff8f},
+  {name:'FUCHSIA',color:0xff2bd6}, {name:'BULLION',color:0xffcf3a}, {name:'ULTRA',color:0x9b6bff},
+];
+let playerColor=CAR_CHOICES[0].color, playerCarName=CAR_CHOICES[0].name;
+function aiColorFor(idx){ const pal=CAR_COLORS.filter(c=>c!==playerColor); return pal[idx % pal.length]; }
 
 function boxGeo(w,h,d,r){
   if(RoundedBox){ try{ return new RoundedBox(w,h,d,2,r||0.35); }catch(e){ /* fall back to a plain box */ } }
@@ -1137,7 +1155,7 @@ class Car{
   constructor(isPlayer,idx){
     this.isPlayer=isPlayer; this.idx=idx;
     this.name=isPlayer?'YOU':AI_NAMES[idx-1];
-    this.color=isPlayer?0x17e6ff:CAR_COLORS[(idx)%CAR_COLORS.length];
+    this.color=isPlayer?playerColor:aiColorFor(idx);
     this.mesh=makeCarMesh(this.color, this.isPlayer?1:(idx+1)); scene.add(this.mesh);
     this.pos=V3(); this.vel=V3(); this.yaw=0; this.y=0; this.vy=0; this.airborne=false;
     this.hp=CFG.MAX_HP; this.mode='racing'; // racing|ghost
@@ -1512,38 +1530,9 @@ function carCollisions(){
 /* =====================================================================
    PICKUPS
    ===================================================================== */
-const ITEM_ICONS={rocket:'🚀',mine:'💣',shield:'🛡️'};
-function spawnPickups(){
-  pickups.forEach(p=>scene.remove(p.mesh)); pickups=[];
-  const N=samples.length; const count=8;
-  for(let i=0;i<count;i++){ const idx=Math.floor((i+0.5)/count*N);
-    const s=samples[idx]; const lane=(i%2===0?1:-1)*rand(3,8);
-    const pos=s.p.clone().addScaledVector(s.side,lane).setY(2);
-    const box=new THREE.Mesh(new THREE.BoxGeometry(2.4,2.4,2.4),
-      new THREE.MeshStandardMaterial({color:0xffffff,emissive:0x44ffcc,emissiveIntensity:0.6,metalness:0.4,roughness:0.3,transparent:true,opacity:0.92}));
-    const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:TEX_GLOW,color:0x44ffcc,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));
-    glow.scale.set(6,6,1); box.add(glow);
-    box.position.copy(pos); scene.add(box);
-    pickups.push({mesh:box,pos,active:true,cooldown:0});
-  }
-}
-function updatePickups(dt){
-  const types=['rocket','mine','shield'];
-  pickups.forEach(p=>{ p.mesh.rotation.y+=dt*2; p.mesh.rotation.x+=dt*1.3;
-    if(!p.active){ p.cooldown-=dt; if(p.cooldown<=0){ p.active=true; p.mesh.visible=true; } return; }
-    p.mesh.position.y=2+Math.sin(performance.now()*0.003+p.pos.x)*0.4;
-    for(const c of cars){ if(c.mode==='ghost')continue; if(c.item&&!c.isPlayer&&Math.random()<0.5){}
-      if(c.pos.distanceTo(p.pos)<4){
-        if(!c.item){ c.item=types[Math.floor(Math.random()*types.length)];
-          if(c.isPlayer){ updateItemHUD(); sfx.pickup(); banner('GOT '+c.item.toUpperCase(),'#5dff8f'); }
-          p.active=false; p.mesh.visible=false; p.cooldown=TRAILER?2:6;
-          fx.ring(p.pos.clone(),0x44ffcc,3);
-        }
-        break;
-      }
-    }
-  });
-}
+// Pickups/weapon-items removed — combat is guns + ramming + bounty + ghost only.
+function spawnPickups(){ pickups.forEach(p=>scene.remove(p.mesh)); pickups=[]; }
+function updatePickups(dt){}
 
 /* =====================================================================
    FX MANAGER (pooled particles)
@@ -1712,11 +1701,7 @@ function updateHUD(){
   el('kmh').innerHTML=Math.round(player.speed*3.0)+'<small> km/h</small>';
   drawMini();
 }
-function updateItemHUD(){
-  const box=el('itemBox');
-  if(player.item){ box.textContent=ITEM_ICONS[player.item]; box.classList.add('has'); el('itemName').textContent=player.item.toUpperCase()+' — SHIFT'; }
-  else { box.textContent='—'; box.classList.remove('has'); el('itemName').textContent=''; }
-}
+function updateItemHUD(){}  // items removed
 let miniCtx;
 function drawMini(){
   if(!miniCtx) miniCtx=el('mini').getContext('2d');
@@ -1817,7 +1802,7 @@ function animate(){
   const sdt=dt*timeScale;
   try{
     if(state==='playing'){ step(sdt); }
-    else if(state==='title'||state==='select'){ idleCam(dt); }
+    else if(state==='title'||state==='select'||state==='carselect'){ idleCam(dt); }
     fx && fx.update(sdt);
     updateRain(sdt); updateLightning(sdt); updateThemePFX(sdt);
     if(moon && player && currentTheme){ const o=currentTheme.sunPos;
@@ -1836,14 +1821,11 @@ function step(dt){
   readKeyboard(); readOnScreen();
   // player
   player.update(dt,input);
-  if(player.mode==='racing'){
-    if(input.fire) fireGun(player);
-    if(input.useItem){ useItem(player); keys['shift']=false; touch.item=false; }
-  }
+  if(player.mode==='racing' && input.fire) fireGun(player);
   // AI
   aiCars.forEach(c=>{ const ctrl=(c.mode==='ghost')?aiGhostControl(c):aiControl(c,dt); c.update(dt,ctrl); });
   carCollisions();
-  updateBullets(dt); updateRockets(dt); updateMines(dt); updatePickups(dt);
+  updateBullets(dt);
   updateRanking(dt);
   updateCamera(dt);
   updateHUD();
@@ -1897,8 +1879,31 @@ function openSelect(){ initAudioOnce(); if(!selectable.length) buildTrackSelect(
 function selMove(d){ selIndex=(selIndex+d+selectable.length)%selectable.length; refreshSel(); }
 function selChoose(){ const t=selectable[selIndex];
   applyTheme(t.id==='random' ? THEMES[(Math.random()*THEMES.length)|0] : t);
-  el('trackselect').classList.add('hidden'); startCountdown(); }
+  el('trackselect').classList.add('hidden'); openCarSelect(); }
 function backToTitle(){ state='title'; el('trackselect').classList.add('hidden'); el('title').classList.remove('hidden'); }
+
+/* ---- Car select ---- */
+let csIndex=0, csBuilt=false;
+function buildCarSelect(){
+  const wrap=el('csCards'); wrap.innerHTML='';
+  CAR_CHOICES.forEach((c,i)=>{ const hexc='#'+new THREE.Color(c.color).getHexString();
+    const card=document.createElement('div'); card.className='ts-card';
+    card.innerHTML='<div class="cs-car" style="color:'+hexc+';background:linear-gradient(180deg,'+hexc+',rgba(0,0,0,.25))"></div>'+
+      '<div class="c-name">'+c.name+'</div><div class="c-place">Racer '+(i+1)+'</div>';
+    card.onmouseenter=()=>{ csIndex=i; refreshCar(); };
+    card.onclick=()=>{ csIndex=i; refreshCar(); csChoose(); };
+    wrap.appendChild(card); });
+  csBuilt=true;
+}
+function refreshCar(){ const cards=el('csCards').children;
+  for(let i=0;i<cards.length;i++){ cards[i].classList.toggle('sel',i===csIndex);
+    if(i===csIndex) cards[i].scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}); } }
+function openCarSelect(){ if(!csBuilt) buildCarSelect();
+  state='carselect'; el('carselect').classList.remove('hidden'); csIndex=0; refreshCar(); }
+function csMove(d){ csIndex=(csIndex+d+CAR_CHOICES.length)%CAR_CHOICES.length; refreshCar(); }
+function csChoose(){ const c=CAR_CHOICES[csIndex]; playerColor=c.color; playerCarName=c.name;
+  el('carselect').classList.add('hidden'); startCountdown(); }
+function carBackToTracks(){ state='select'; el('carselect').classList.add('hidden'); el('trackselect').classList.remove('hidden'); refreshSel(); }
 
 /* =====================================================================
    BOOT
