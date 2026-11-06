@@ -587,24 +587,34 @@ const sfx={
   ghost(){ tone(900,0.3,'sine',0.12,180); },
 };
 const SCALE=[0,3,5,7,10,12,15]; const ROOT=110;
+// 16-step driving loop: kick + hi-hat + filtered bass + lead (synth only, lightweight)
+const MUS_LEAD=[0,-1,3,-1, 5,-1,3,2, 7,-1,5,3, 2,3,5,-1];
+const MUS_BASS=[0,0,0,0, 3,3,3,3, 5,5,5,5, 4,4,2,2];
+const MUS_KICK=[1,0,0,0, 1,0,0,1, 1,0,0,0, 1,0,1,0];
+const MUS_HAT =[0,1,0,1, 0,1,0,1, 0,1,0,1, 0,1,1,1];
 function startMusic(){
-  if(musicTimer) clearInterval(musicTimer);
-  const pat=[0,2,4,2, 3,4,6,4, 1,3,5,3, 4,5,6,5];
+  if(musicTimer) clearInterval(musicTimer); musicStep=0;
   musicTimer=setInterval(()=>{
     if(!AC||muted) return;
-    const n=pat[musicStep%pat.length];
-    const f=ROOT*Math.pow(2,SCALE[n%SCALE.length]/12 + Math.floor(n/SCALE.length));
-    const o=AC.createOscillator(); o.type='triangle'; o.frequency.value=f;
-    const g=AC.createGain(); g.gain.value=0; g.gain.linearRampToValueAtTime(0.5,AC.currentTime+0.02);
-    g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.22);
-    o.connect(g); g.connect(musicGain); o.start(); o.stop(AC.currentTime+0.24);
-    if(musicStep%4===0){ // bass
-      const b=AC.createOscillator(); b.type='sawtooth'; b.frequency.value=f/2;
-      const bg=AC.createGain(); bg.gain.value=0.3; bg.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.3);
-      b.connect(bg); bg.connect(musicGain); b.start(); b.stop(AC.currentTime+0.3);
-    }
+    const t=AC.currentTime, s=musicStep%16;
+    if(MUS_KICK[s]){ const o=AC.createOscillator(),g=AC.createGain(); o.type='sine';
+      o.frequency.setValueAtTime(125,t); o.frequency.exponentialRampToValueAtTime(45,t+0.12);
+      g.gain.setValueAtTime(0.55,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.16);
+      o.connect(g); g.connect(musicGain); o.start(t); o.stop(t+0.18); }
+    if(MUS_HAT[s]){ const n=AC.createBufferSource(); n.buffer=noiseBuf; const hp=AC.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=7000;
+      const g=AC.createGain(); g.gain.setValueAtTime(0.07,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+      n.connect(hp); hp.connect(g); g.connect(musicGain); n.start(t); n.stop(t+0.06); }
+    { const bf=ROOT*Math.pow(2,SCALE[MUS_BASS[s]%SCALE.length]/12)/2;
+      const o=AC.createOscillator(),g=AC.createGain(),lp=AC.createBiquadFilter(); o.type='sawtooth'; o.frequency.value=bf;
+      lp.type='lowpass'; lp.frequency.value=650; g.gain.setValueAtTime(0.2,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.18);
+      o.connect(lp); lp.connect(g); g.connect(musicGain); o.start(t); o.stop(t+0.2); }
+    const ln=MUS_LEAD[s];
+    if(ln>=0){ const lf=ROOT*Math.pow(2,SCALE[ln%SCALE.length]/12 + 1 + Math.floor(ln/SCALE.length));
+      const o=AC.createOscillator(),g=AC.createGain(); o.type='triangle'; o.frequency.value=lf;
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.13,t+0.02); g.gain.exponentialRampToValueAtTime(0.001,t+0.2);
+      o.connect(g); g.connect(musicGain); o.start(t); o.stop(t+0.22); }
     musicStep++;
-  }, 160);
+  }, 140);
 }
 
 /* =====================================================================
