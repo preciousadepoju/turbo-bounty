@@ -415,7 +415,7 @@ const QUALITY = {
   rain: 0,
   post: true,            // bloom + FXAA + grain (set false if still heavy)
   envMap: true,          // reflections on cars / wet road
-  pixelRatioCap: 1.0,    // native-res render (big GPU headroom, kills frame spikes); raise to 1.3 for crisper
+  pixelRatioCap: 1.15,   // balanced: sharp scene + cheap half-res bloom; lower to 1.0 if ever heavy
   adaptive: true,        // auto-lower resolution when the frame-rate dips
 };
 
@@ -653,7 +653,7 @@ async function initBloom(){
     const {OutputPass}=await import('three/addons/postprocessing/OutputPass.js');
     composer=new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene,camera));
-    bloomPass=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.55,0.4,0.72);
+    bloomPass=new UnrealBloomPass(new THREE.Vector2(innerWidth*0.5,innerHeight*0.5),0.6,0.4,0.72);
     composer.addPass(bloomPass);
     try{
       const {ShaderPass}=await import('three/addons/postprocessing/ShaderPass.js');
@@ -664,7 +664,7 @@ async function initBloom(){
       composer.addPass(fxaaPass);
     }catch(e){ console.warn('FXAA unavailable',e); }
     composer.addPass(new OutputPass());
-    useBloom=true;
+    useBloom=true; setBloomRes();
   }catch(e){ console.warn('Bloom unavailable, using emissive fallback',e); useBloom=false; }
 }
 addEventListener('resize',()=>{
@@ -672,7 +672,11 @@ addEventListener('resize',()=>{
   renderer.setSize(innerWidth,innerHeight);
   if(composer) composer.setSize(innerWidth,innerHeight);
   if(fxaaPass){ const pr=renderer.getPixelRatio(); fxaaPass.material.uniforms['resolution'].value.set(1/(innerWidth*pr),1/(innerHeight*pr)); }
+  setBloomRes();
 });
+// bloom runs at half the render resolution — much cheaper, glow barely changes
+function setBloomRes(){ if(bloomPass){ const pr=renderer.getPixelRatio();
+  bloomPass.setSize(Math.max(1,innerWidth*pr*0.5), Math.max(1,innerHeight*pr*0.5)); } }
 async function initEnvironment(){
   if(!QUALITY.envMap) return;
   try{
@@ -1792,6 +1796,7 @@ function applyPixelRatio(){
   renderer.setPixelRatio(perf.pr);
   if(composer) composer.setPixelRatio(perf.pr);
   if(fxaaPass){ const p=renderer.getPixelRatio(); fxaaPass.material.uniforms['resolution'].value.set(1/(innerWidth*p),1/(innerHeight*p)); }
+  setBloomRes();
 }
 function updatePerf(){
   if(!QUALITY.adaptive) return;
