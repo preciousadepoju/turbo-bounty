@@ -49,6 +49,14 @@
   #heatFill{width:0%;background:linear-gradient(90deg,#39d0ff,#ff8a2b);box-shadow:0 0 14px #ff9b3b;}
   #heatWrap.overheat .bar{border-color:#ff5a5a;animation:ohblink .3s steps(2) infinite;}
   @keyframes ohblink{50%{opacity:.35;}}
+  #nitroFill{width:0%;background:linear-gradient(90deg,#5dff8f,#17e6ff);box-shadow:0 0 14px #5dff8f;}
+  #nitroWrap.ready .bar{border-color:#5dff8f;box-shadow:0 0 14px rgba(93,255,143,.5);}
+  #drift{position:absolute;left:50%;top:60%;transform:translate(-50%,-50%);text-align:center;opacity:0;
+    font-family:'Teko',sans-serif;font-weight:600;letter-spacing:1px;white-space:nowrap;
+    color:#eaffff;text-shadow:0 0 16px #17e6ff;transition:opacity .15s;}
+  #drift.on{opacity:1;}
+  #drift .dpts{font-size:clamp(30px,5vw,52px);line-height:1;}
+  #drift .dmult{font-size:clamp(16px,2.6vw,24px);color:#ffcf3a;text-shadow:0 0 14px #ffcf3a;}
   #item{position:absolute;right:16px;bottom:18px;width:120px;text-align:center;}
   #itemBox{width:120px;height:120px;border:3px solid rgba(255,255,255,.4);border-radius:16px;
     display:flex;align-items:center;justify-content:center;font-size:52px;
@@ -270,8 +278,10 @@
   <div id="bars">
     <div id="hpWrap" class="barwrap"><div class="barlabel">Hull</div><div class="bar"><div id="hpFill" class="fill"></div></div></div>
     <div id="heatWrap" class="barwrap"><div class="barlabel">Gun Heat</div><div class="bar"><div id="heatFill" class="fill"></div></div></div>
+    <div id="nitroWrap" class="barwrap"><div class="barlabel">Nitro — Shift</div><div class="bar"><div id="nitroFill" class="fill"></div></div></div>
   </div>
   <div id="speedo" class="panel"><div id="kmh">0<small> km/h</small></div></div>
+  <div id="drift"></div>
   <div id="banner"></div>
   <div id="respawn"></div>
 </div>
@@ -1317,6 +1327,7 @@ class Car{
     this.gunHeat=0; this.gunCool=0; this.overheated=false;
     this.boostT=0; this.shieldT=0; this.invincT=0; this.respawnT=0;
     this.item=null;
+    this.nitro=0; this.driftPts=0; this.driftActive=false; this.driftMult=1; this._nitroOn=false;
     this.lap=0; this.sampleIdx=0; this.prevIdx=0; this.progress=0;
     this.nextCP=1; this.lastCP=0;
     this.bountyHold=0; this.points=0; this.kills=0;
@@ -1401,7 +1412,8 @@ class Car{
 
     // drift fx: smoke + skid marks + tyre screech (player)
     const latSpeed=latVec.length();
-    if(!this.airborne && latSpeed>7 && this.speed>14){
+    const drifting=!this.airborne && latSpeed>7 && this.speed>14;
+    if(drifting){
       this.driftSmokeT-=dt;
       if(this.driftSmokeT<=0){ this.driftSmokeT=0.055;
         fx.smoke(this.pos.clone().addScaledVector(this.forward(),-2.5).setY(0.4),0x888899,1.8);
@@ -1409,6 +1421,21 @@ class Car{
       }
       if(this.isPlayer && performance.now()-this.lastSkid>110){ this.lastSkid=performance.now();
         noise(0.14,850,'bandpass',0.05,0.6); }
+    }
+    // nitro fill + drift scoring (player)
+    if(this.isPlayer){
+      if(drifting){
+        this.nitro=Math.min(1,this.nitro+dt*0.28);
+        this.driftActive=true; this.driftPts+=latSpeed*dt*2.2;
+        this.driftMult=Math.min(6,1+Math.floor(this.driftPts/250));
+        showDrift(Math.floor(this.driftPts),this.driftMult);
+      } else if(this.driftActive){
+        this.driftActive=false; const got=Math.floor(this.driftPts*this.driftMult);
+        this.points+=got; hideDrift();
+        if(got>400) announce('SICK DRIFT!  +'+got,'#17e6ff');
+        else if(got>120) announce('NICE DRIFT  +'+got,'#5dff8f');
+        this.driftPts=0; this.driftMult=1;
+      }
     }
     // boost flame trail
     if(this.boostT>0 && Math.random()<0.75){
@@ -1838,6 +1865,8 @@ function updateHUD(){
   el('hpFill').style.width=clamp(player.hp/CFG.MAX_HP*100,0,100)+'%';
   el('heatFill').style.width=clamp(player.gunHeat*100,0,100)+'%';
   el('heatWrap').classList.toggle('overheat',player.overheated);
+  el('nitroFill').style.width=clamp(player.nitro*100,0,100)+'%';
+  el('nitroWrap').classList.toggle('ready',player.nitro>0.25);
   el('kmh').innerHTML=Math.round(player.speed*3.0)+'<small> km/h</small>';
   // race timer + last lap
   el('timer').textContent=fmtTime((performance.now()-raceStartClock)/1000);
@@ -1869,6 +1898,12 @@ function banner(text,color){ const b=el('banner'); b.textContent=text; b.style.c
   b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); }
 function banner2(text,color){ // secondary, reuse feed-ish strong line
   feed('<b style="color:'+(color||'#fff')+';font-size:18px">'+text+'</b>'); }
+function announce(text,color){ banner(text,color); }
+let driftPtsEl, driftMultEl;
+function showDrift(pts,mult){ const d=el('drift'); if(!d) return;
+  if(!driftPtsEl){ d.innerHTML='<div class="dpts"></div><div class="dmult"></div>'; driftPtsEl=d.querySelector('.dpts'); driftMultEl=d.querySelector('.dmult'); }
+  driftPtsEl.textContent=pts; driftMultEl.textContent='DRIFT ×'+mult; d.classList.add('on'); }
+function hideDrift(){ const d=el('drift'); if(d) d.classList.remove('on'); }
 function feed(html){ const f=el('feed'); const d=document.createElement('div'); d.className='feedline'; d.innerHTML=html; f.appendChild(d);
   setTimeout(()=>{ d.style.transition='opacity .5s'; d.style.opacity='0'; setTimeout(()=>d.remove(),500); },3500);
   while(f.children.length>5) f.removeChild(f.firstChild); }
@@ -1892,7 +1927,9 @@ function resetRace(){
   mines.forEach(m=>scene.remove(m.mesh)); mines=[];
   createCars();
   spawnPickups();
-  cars.forEach(c=>{ c.hp=CFG.MAX_HP; c.lap=0; c.mode='racing'; c.points=0; c.kills=0; c.bountyHold=0; c.item=null; c.finished=false; c.invincT=1.5; });
+  cars.forEach(c=>{ c.hp=CFG.MAX_HP; c.lap=0; c.mode='racing'; c.points=0; c.kills=0; c.bountyHold=0; c.item=null; c.finished=false; c.invincT=1.5;
+    c.nitro=0; c.driftPts=0; c.driftActive=false; c.driftMult=1; });
+  hideDrift();
   applyTrailer();
   updateItemHUD();
 }
@@ -2014,7 +2051,15 @@ function step(dt){
   readKeyboard(); readOnScreen();
   // player
   player.update(dt,input);
-  if(player.mode==='racing' && input.fire) fireGun(player);
+  if(player.mode==='racing'){
+    if(input.fire) fireGun(player);
+    // nitro: hold Shift to burn it for a boost
+    if(input.useItem && player.nitro>0.02){
+      player.nitro=Math.max(0,player.nitro-dt*0.45); player.boostT=Math.max(player.boostT,0.13);
+      if(!player._nitroOn){ player._nitroOn=true; announce('NITRO!','#ff7a2a'); sfx.boost(); }
+      fx.smoke(player.pos.clone().addScaledVector(player.forward(),-3.8).setY(1),0x33e0ff,2.4,true);
+    } else player._nitroOn=false;
+  }
   // AI
   aiCars.forEach(c=>{ c.update(dt, c.mode==='dead'?null:aiControl(c,dt)); });
   carCollisions();
