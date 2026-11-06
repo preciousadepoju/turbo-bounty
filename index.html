@@ -25,7 +25,10 @@
   #topLeft{top:14px;left:16px;}
   #pos{font-size:34px;line-height:1;color:#fff;text-shadow:0 0 14px var(--neon-cyan);}
   #pos small{font-size:15px;opacity:.75;font-weight:normal;}
-  #lap{font-size:18px;margin-top:4px;color:#cfefff;}
+  #lap{font-size:18px;margin-top:4px;color:#cfefff;letter-spacing:1px;}
+  #lapPips{display:flex;gap:5px;margin-top:5px;}
+  #lapPips span{width:22px;height:5px;border-radius:3px;background:rgba(255,255,255,.22);transition:background .2s;}
+  #lapPips span.on{background:var(--neon-cyan);box-shadow:0 0 9px var(--neon-cyan);}
   #topRight{top:14px;right:16px;text-align:right;}
   #bounty{font-size:30px;color:var(--neon-gold);text-shadow:0 0 16px var(--neon-gold);}
   #bounty small{font-size:13px;opacity:.8;}
@@ -139,8 +142,10 @@
   #nameInput::placeholder{color:rgba(255,255,255,.4);letter-spacing:2px;}
   .tb-modes{margin-top:22px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center;}
   .tb-modes .btn{margin-top:0;font-size:clamp(18px,3.2vw,24px);padding:13px 34px;}
-  .tb-hint{margin-top:14px;font-size:13px;letter-spacing:3px;color:#9fb6e8;font-weight:bold;
+  .tb-hint{margin-top:14px;font-size:13px;letter-spacing:3px;color:#9fb6e8;font-weight:bold;pointer-events:none;
     animation:blinkhint 1.3s steps(2,end) infinite;}
+  .btn:active{transform:scale(0.96);}
+  .cs-arrow:active{transform:scale(0.9);}
   @keyframes blinkhint{50%{opacity:.3;}}
   #ctrlbar{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);z-index:3;
     display:flex;gap:10px 18px;flex-wrap:wrap;justify-content:center;align-items:center;
@@ -199,7 +204,7 @@
   .cs-user::placeholder{color:rgba(255,255,255,.4);letter-spacing:2px;}
   #csRace{margin-top:2px;}
   .ts-hint{position:absolute;bottom:5vh;left:50%;transform:translateX(-50%);font-size:13px;letter-spacing:2px;
-    color:#9fb6e8;font-weight:bold;white-space:nowrap;}
+    color:#9fb6e8;font-weight:bold;white-space:nowrap;pointer-events:none;}
   #count{font-size:clamp(90px,26vw,260px);font-weight:900;color:#fff;
     filter:drop-shadow(0 0 40px var(--neon-cyan));}
   #results h2{font-size:clamp(30px,6vw,56px);font-weight:900;letter-spacing:3px;color:var(--neon-gold);
@@ -243,6 +248,7 @@
   <div id="topLeft" class="panel">
     <div id="pos">1<small>st</small></div>
     <div id="lap">LAP 1 / 3</div>
+    <div id="lapPips"></div>
   </div>
   <div id="topRight" class="panel">
     <div id="bounty">0 <small>BOUNTY</small></div>
@@ -355,11 +361,11 @@ const CFG = {
   ROAD_HALF: 15,          // road half-width (collision)
   SAMPLES: 420,           // track resolution / progress granularity
   // driving
-  MAX_SPEED: 88,
-  REVERSE_SPEED: 26,
-  ACCEL: 46,              // gradual build-up, like a real car gaining speed
-  BRAKE: 120,
-  DRAG: 0.45,             // natural slowdown
+  MAX_SPEED: 122,         // top speed (x3 = ~366 km/h on the speedo)
+  REVERSE_SPEED: 30,
+  ACCEL: 64,              // builds up, but now reaches the higher top speed
+  BRAKE: 140,
+  DRAG: 0.4,              // natural slowdown (lower = reaches higher top speed)
   TURN_RATE: 2.7,         // rad/s steering
   GRIP: 7.5,              // lateral grip (higher = less slide)
   DRIFT_GRIP: 3.3,        // grip while handbraking (higher = tighter, less ice)
@@ -1338,8 +1344,10 @@ class Car{
       latVec.multiplyScalar(Math.max(0,1-grip*dt));
       const spdFactor=clamp(Math.abs(fAmt)/18,0,1);
       const dirSign=fAmt>=0?1:-1;
-      this.yaw+=steer*CFG.TURN_RATE*dt*spdFactor*dirSign*(handbrake?1.35:1);
-      this._steer=steer;
+      // smooth the steering input so turns feel fluid, not twitchy
+      this.steerSmooth = lerp(this.steerSmooth||0, steer, clamp(9*dt,0,1));
+      this.yaw+=this.steerSmooth*CFG.TURN_RATE*dt*spdFactor*dirSign*(handbrake?1.35:1);
+      this._steer=this.steerSmooth;
       // ride the ramp surface; launch off the lip
       const r=rampHeightAt(this.pos);
       if(r){ this.y=r.h;
@@ -1412,7 +1420,7 @@ class Car{
     const N=samples.length;
     // lap crossing
     if(this.prevIdx>N*0.75 && best<N*0.25){ this.lap++; if(this.isPlayer) sfx.pickup();
-      if(this.lap>=CFG.LAPS){ this.finishRace(); } }
+      if(this.lap>=raceLaps){ this.finishRace(); } }
     else if(this.prevIdx<N*0.25 && best>N*0.75){ this.lap=Math.max(0,this.lap-1); }
     // checkpoint capture (for respawn) — nearest passed cp
     for(let c=0;c<checkpointIdx.length;c++){ const ci=checkpointIdx[c];
@@ -1683,9 +1691,9 @@ function aiControl(car,dt){
   // slow for sharp turns
   const futureIdx=(car.sampleIdx+lookSamples+10)%N;
   const curveAng=Math.abs(samples[futureIdx].t.angleTo(car.forward()));
-  if(curveAng>0.8 && spd>CFG.MAX_SPEED*(0.55+0.14*aiDifficulty)){ ctrl.throttle=0.2+0.35*aiDifficulty; if(curveAng>1.2&&spd>40) ctrl.handbrake=true; }
-  // occasional lane change
-  car.aiReactT-=dt; if(car.aiReactT<=0){ car.aiReactT=rand(2,5); car.aiLane=clamp(car.aiLane+rand(-4,4),-9,9); }
+  if(curveAng>0.8 && spd>CFG.MAX_SPEED*(0.55+0.24*aiDifficulty)){ ctrl.throttle=0.25+0.45*aiDifficulty; if(curveAng>1.2&&spd>40) ctrl.handbrake=true; }
+  // occasional lane change (less wandering, tighter racing line at higher difficulty)
+  car.aiReactT-=dt; if(car.aiReactT<=0){ car.aiReactT=rand(2,5); car.aiLane=clamp(car.aiLane+rand(-4,4)*(1-0.6*aiDifficulty),-9,9); }
   // stuck recovery
   if(spd<4) car.stuckT+=dt; else car.stuckT=0;
   if(car.stuckT>1.3){ ctrl.throttle=-1; ctrl.steer=-ctrl.steer; if(car.stuckT>2.6){car.stuckT=0;} }
@@ -1774,7 +1782,9 @@ const el=id=>document.getElementById(id);
 const ord=['th','st','nd','rd','th','th','th'];
 function updateHUD(){
   const r=player.rank; el('pos').innerHTML=r+'<small>'+(ord[r]||'th')+'</small>';
-  el('lap').textContent='LAP '+clamp(player.lap+1,1,CFG.LAPS)+' / '+CFG.LAPS;
+  el('lap').textContent='LAP '+clamp(player.lap+1,1,raceLaps)+' / '+raceLaps;
+  const pips=el('lapPips'); if(pips&&pips.children.length){ const cur=clamp(player.lap,0,raceLaps-1);
+    for(let i=0;i<pips.children.length;i++) pips.children[i].classList.toggle('on', i<=cur); }
   el('bounty').innerHTML=Math.floor(player.bountyHold)+' <small>BOUNTY</small>';
   el('score').textContent='SCORE '+(player.points+Math.floor(player.bountyHold))+' · KILLS '+player.kills;
   el('hpFill').style.width=clamp(player.hp/CFG.MAX_HP*100,0,100)+'%';
@@ -1831,10 +1841,15 @@ function resetRace(){
   applyTrailer();
   updateItemHUD();
 }
+function buildLapPips(){ const p=el('lapPips'); if(!p)return; p.innerHTML='';
+  for(let i=0;i<raceLaps;i++) p.appendChild(document.createElement('span')); }
 function startCountdown(){
+  // career: a bit longer each level (3,3,4,4,5 laps); quick race = 3 laps
+  raceLaps = champActive ? (3 + Math.floor(champRound/2)) : CFG.LAPS;
   resetRace(); state='countdown';
   el('title').classList.add('hidden'); el('results').classList.add('hidden');
   el('hud').classList.remove('hidden');
+  buildLapPips();
   const cd=el('countdown'); cd.classList.remove('hidden');
   const popCount=txt=>{ const c=el('count'); c.textContent=txt; c.style.animation='none'; void c.offsetWidth; c.style.animation='countpop .6s ease-out'; };
   let n=3; popCount(n); tone(440,0.15,'square',0.2);
@@ -1960,7 +1975,7 @@ function idleCam(dt){
    TRACK SELECT
    ===================================================================== */
 /* ---- Game modes & championship ---- */
-let gameMode='quick', champActive=false, champRound=0, champPoints=[0,0,0,0,0,0], aiDifficulty=0;
+let gameMode='quick', champActive=false, champRound=0, champPoints=[0,0,0,0,0,0], aiDifficulty=0, raceLaps=3;
 function setNameFromInput(){ const v=((el('nameInput')&&el('nameInput').value)||'').trim().toUpperCase(); playerName=v||'YOU'; }
 function startCareer(){ initAudioOnce(); setNameFromInput(); gameMode='career'; champActive=true; champRound=0; champPoints=[0,0,0,0,0,0];
   el('title').classList.add('hidden'); openCarSelect(); }
