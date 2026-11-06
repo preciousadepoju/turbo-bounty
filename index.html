@@ -4,6 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>TURBO BOUNTY</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --neon-cyan:#17e6ff; --neon-mag:#ff2bd6; --neon-gold:#ffcf3a; --neon-green:#5dff8f;
@@ -11,9 +14,11 @@
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
   html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:#fff;
-    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;}
+    font-family:'Rajdhani',"Segoe UI",system-ui,sans-serif;}
   #app{position:fixed;inset:0;}
   canvas{display:block;}
+  /* display font (Teko) for big impact text; UI stays Rajdhani */
+  #banner,.ts-title,#count,#results h2,#pauseCard,#pos,#kmh,.cs-name{font-family:'Teko',sans-serif;letter-spacing:1px;}
   /* ---------- HUD ---------- */
   #hud{position:fixed;inset:0;pointer-events:none;z-index:10;font-weight:bold;}
   .panel{position:absolute;text-shadow:0 0 8px rgba(0,0,0,.9);}
@@ -103,12 +108,12 @@
   #title .glowbar{position:absolute;top:0;left:0;right:0;height:46%;z-index:1;pointer-events:none;
     background:radial-gradient(ellipse at 50% 0%,rgba(255,43,214,.18),transparent 60%);}
   .tb-wrap{position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;}
-  .tb-logo{font-style:italic;font-weight:900;line-height:.8;text-align:center;letter-spacing:3px;
-    transform:skewX(-7deg);animation:flicker 5s infinite;}
-  .tb-logo span{display:block;font-size:clamp(58px,15.5vw,172px);}
-  .tb-logo .l1{color:#eaffff;text-shadow:0 0 6px #fff,0 0 22px var(--neon-cyan),0 0 55px var(--neon-cyan),0 3px 0 #0a2230;}
-  .tb-logo .l2{color:#ffeaf9;text-shadow:0 0 6px #fff,0 0 22px var(--neon-mag),0 0 60px var(--neon-mag),0 3px 0 #2a0a24;
-    margin-top:-6px;}
+  .tb-logo{font-family:'Teko',sans-serif;font-weight:700;line-height:.8;text-align:center;letter-spacing:5px;
+    animation:flicker 6s infinite;}
+  .tb-logo span{display:block;font-size:clamp(74px,17vw,196px);}
+  .tb-logo .l1{color:#eafdff;text-shadow:0 0 2px #fff,0 0 12px #17e6ff,0 0 30px rgba(23,230,255,.7),0 0 62px rgba(23,230,255,.3);}
+  .tb-logo .l2{color:#ffe9f8;text-shadow:0 0 2px #fff,0 0 12px #ff2bd6,0 0 30px rgba(255,43,214,.7),0 0 62px rgba(255,43,214,.3);
+    margin-top:-18px;}
   @keyframes flicker{0%,18%,22%,25%,53%,57%,100%{opacity:1;}20%,24%,55%{opacity:.78;}}
   .tb-rule{width:min(540px,82vw);height:3px;margin:24px auto 16px;border:0;border-radius:3px;
     background:linear-gradient(90deg,transparent,var(--neon-cyan),var(--neon-mag),transparent);
@@ -161,10 +166,24 @@
   .ts-card .c-place{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--neon-cyan);margin-top:3px;}
   .ts-card .c-desc{font-size:12px;line-height:1.45;color:#c3d0ea;margin-top:9px;font-weight:normal;min-height:52px;}
   .ts-swatch{height:6px;border-radius:4px;margin-top:4px;}
-  .cs-car{height:60px;border-radius:16px 16px 9px 9px;margin:2px 0 12px;position:relative;
-    box-shadow:0 0 26px currentColor, inset 0 -12px 22px rgba(0,0,0,.45), inset 0 4px 10px rgba(255,255,255,.25);}
-  .cs-car::before{content:"";position:absolute;left:22%;right:22%;top:9px;height:20px;border-radius:7px;background:rgba(8,10,18,.8);}
-  .cs-car::after{content:"";position:absolute;left:50%;transform:translateX(-50%);bottom:7px;width:34%;height:5px;border-radius:3px;background:rgba(255,255,255,.55);}
+  /* car select — 3D showroom controls */
+  #carselect{background:linear-gradient(to bottom,rgba(5,3,15,.08),rgba(5,3,15,.22) 45%,rgba(5,3,15,.85));justify-content:flex-start;}
+  #csBottom{position:absolute;bottom:6vh;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:14px;}
+  .cs-row{display:flex;align-items:center;gap:26px;}
+  .cs-name{font-size:clamp(34px,6vw,62px);font-weight:600;color:#fff;letter-spacing:3px;min-width:min(300px,70vw);text-align:center;text-shadow:0 0 22px currentColor;}
+  .cs-arrow{pointer-events:auto;cursor:pointer;width:54px;height:54px;border-radius:50%;border:2px solid rgba(255,255,255,.35);
+    background:rgba(8,6,20,.5);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:transform .1s,border-color .2s,box-shadow .2s;}
+  .cs-arrow:hover{transform:scale(1.08);border-color:var(--neon-cyan);box-shadow:0 0 20px rgba(23,230,255,.5);}
+  .cs-dots{display:flex;gap:10px;}
+  .cs-dots span{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.25);transition:all .2s;}
+  .cs-dots span.on{background:var(--neon-cyan);box-shadow:0 0 12px var(--neon-cyan);transform:scale(1.25);}
+  .cs-user{pointer-events:auto;width:min(320px,80vw);text-align:center;font-family:'Rajdhani',sans-serif;font-weight:600;
+    font-size:18px;letter-spacing:2px;text-transform:uppercase;color:#fff;background:rgba(8,6,20,.5);
+    border:1px solid rgba(255,255,255,.25);border-radius:10px;padding:9px 14px;outline:none;}
+  .cs-user:focus{border-color:var(--neon-cyan);box-shadow:0 0 16px rgba(23,230,255,.35);}
+  .cs-user::placeholder{color:rgba(255,255,255,.4);letter-spacing:2px;}
+  #csRace{margin-top:2px;}
   .ts-hint{position:absolute;bottom:5vh;left:50%;transform:translateX(-50%);font-size:13px;letter-spacing:2px;
     color:#9fb6e8;font-weight:bold;white-space:nowrap;}
   #count{font-size:clamp(90px,26vw,260px);font-weight:900;color:#fff;
@@ -258,8 +277,17 @@
 
 <div id="carselect" class="screen hidden">
   <div class="ts-title">SELECT CAR</div>
-  <div id="csCards"></div>
-  <div class="ts-hint">◀ ▶ browse&nbsp;·&nbsp;ENTER to race&nbsp;·&nbsp;ESC back&nbsp;·&nbsp;or click a car</div>
+  <div id="csBottom">
+    <div class="cs-row">
+      <button class="cs-arrow" id="csPrev">◀</button>
+      <div class="cs-name" id="csName">AZURE</div>
+      <button class="cs-arrow" id="csNext">▶</button>
+    </div>
+    <div class="cs-dots" id="csDots"></div>
+    <input id="csUser" class="cs-user" maxlength="14" placeholder="YOUR NAME" autocomplete="off" spellcheck="false" />
+    <button id="csRace" class="btn tb-start">RACE&nbsp;▶</button>
+  </div>
+  <div class="ts-hint">◀ ▶ browse&nbsp;·&nbsp;ENTER race&nbsp;·&nbsp;ESC back</div>
 </div>
 
 <div id="countdown" class="screen hidden"><div id="count">3</div></div>
@@ -383,6 +411,12 @@ const keys={};
 const input={throttle:0,steer:0,handbrake:false,fire:false};
 addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
+  // typing in the username field — let the input handle keys, don't drive the game
+  if(document.activeElement && document.activeElement.tagName==='INPUT'){
+    if(k==='enter'){ document.activeElement.blur(); if(state==='carselect') csChoose(); }
+    else if(k==='escape'){ document.activeElement.blur(); }
+    return;
+  }
   keys[k]=true;
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
   if(state==='select'){
@@ -655,7 +689,7 @@ function asphaltTextures(){
 // building facade: grid of randomly-lit windows (glow via emissiveMap)
 let TEX_WINDOWS=[];
 function windowTexture(){
-  const S=256; const c=document.createElement('canvas'); c.width=c.height=S; const g=c.getContext('2d');
+  const S=128; const c=document.createElement('canvas'); c.width=c.height=S; const g=c.getContext('2d');
   g.fillStyle='#080810'; g.fillRect(0,0,S,S);
   const cols=8,rows=8,m=6, cw=(S-m*(cols+1))/cols, ch=(S-m*(rows+1))/rows;
   const tints=['#ffd98a','#8fd8ff','#ff8ad8','#b7ff9a','#ffb060'];
@@ -916,6 +950,16 @@ const THEMES=[
     accentA:0x7fd0ff, accentB:0xcfe4f5, scenery:'snow', pfx:'snow' },
 ];
 const themeCache={};   // built worlds kept and toggled, so switching never rebuilds
+function ensureThemeWorld(theme){
+  let w=themeCache[theme.id];
+  if(!w){ const sky=buildSkyGroup(theme); sky.visible=false; scene.add(sky);
+    const scn=new THREE.Group(); scn.visible=false; scene.add(scn); buildScenery(theme,scn);
+    w={sky,scn}; themeCache[theme.id]=w; }
+  return w;
+}
+function prewarmThemes(){ // build every location in the background so switching never hitches
+  THEMES.forEach((t,i)=> setTimeout(()=>{ try{ ensureThemeWorld(t); }catch(e){ console.warn('prewarm',e); } }, 700+i*450));
+}
 function applyTheme(theme){
   currentTheme=theme;
   scene.background.set(theme.bg);
@@ -925,12 +969,8 @@ function applyTheme(theme){
   moon.color.set(theme.sun); moon.intensity=theme.sunI;
   if(groundMesh){ groundMesh.material.color.set(theme.ground); groundMesh.material.roughness=theme.groundRough; }
   if(roadMat){ roadMat.color.set(theme.road); roadMat.roughness=theme.roadRough; }
-  // hide every cached world, then show (building once) the requested one
   for(const k in themeCache){ themeCache[k].sky.visible=false; themeCache[k].scn.visible=false; }
-  let w=themeCache[theme.id];
-  if(!w){ const sky=buildSkyGroup(theme); scene.add(sky);
-    const scn=new THREE.Group(); scene.add(scn); buildScenery(theme,scn);
-    w={sky,scn}; themeCache[theme.id]=w; }
+  const w=ensureThemeWorld(theme);
   w.sky.visible=true; w.scn.visible=true; skyGroup=w.sky; sceneryGroup=w.scn;
   if(themePFX){ scene.remove(themePFX.points); themePFX.points.geometry.dispose(); themePFX.points.material.dispose(); themePFX=null; }
   if(theme.pfx) themePFX=buildThemePFX(theme.pfx);
@@ -1069,7 +1109,7 @@ const CAR_CHOICES=[
   {name:'AZURE',color:0x17e6ff}, {name:'INFERNO',color:0xff6a3d}, {name:'VENOM',color:0x5dff8f},
   {name:'FUCHSIA',color:0xff2bd6}, {name:'BULLION',color:0xffcf3a}, {name:'ULTRA',color:0x9b6bff},
 ];
-let playerColor=CAR_CHOICES[0].color, playerCarName=CAR_CHOICES[0].name;
+let playerColor=CAR_CHOICES[0].color, playerCarName=CAR_CHOICES[0].name, playerName='';
 function aiColorFor(idx){ const pal=CAR_COLORS.filter(c=>c!==playerColor); return pal[idx % pal.length]; }
 
 function boxGeo(w,h,d,r){
@@ -1154,7 +1194,7 @@ function nameSprite(text,color){
 class Car{
   constructor(isPlayer,idx){
     this.isPlayer=isPlayer; this.idx=idx;
-    this.name=isPlayer?'YOU':AI_NAMES[idx-1];
+    this.name=isPlayer?(playerName||'YOU'):AI_NAMES[idx-1];
     this.color=isPlayer?playerColor:aiColorFor(idx);
     this.mesh=makeCarMesh(this.color, this.isPlayer?1:(idx+1)); scene.add(this.mesh);
     this.pos=V3(); this.vel=V3(); this.yaw=0; this.y=0; this.vy=0; this.airborne=false;
@@ -1802,11 +1842,13 @@ function animate(){
   const sdt=dt*timeScale;
   try{
     if(state==='playing'){ step(sdt); }
-    else if(state==='title'||state==='select'||state==='carselect'){ idleCam(dt); }
+    else if(state==='carselect'){ showroomCam(dt); }
+    else if(state==='title'||state==='select'){ idleCam(dt); }
     fx && fx.update(sdt);
     updateRain(sdt); updateLightning(sdt); updateThemePFX(sdt);
-    if(moon && player && currentTheme){ const o=currentTheme.sunPos;
-      moon.target.position.copy(player.pos); moon.position.set(player.pos.x+o[0], o[1], player.pos.z+o[2]); }
+    if(moon && currentTheme){ const o=currentTheme.sunPos;
+      const fp=(state==='carselect'&&previewCar)?previewCar.position:(player?player.pos:null);
+      if(fp){ moon.target.position.copy(fp); moon.position.set(fp.x+o[0], o[1], fp.z+o[2]); } }
     // engine sound
     if(engGain && engOsc){ const spd=player?player.speed:0; const rpm=40+clamp(spd/CFG.MAX_SPEED,0,1.3)*160;
       engOsc.frequency.setTargetAtTime(rpm,AC.currentTime,0.05); engOsc2.frequency.setTargetAtTime(rpm*1.5,AC.currentTime,0.05);
@@ -1882,28 +1924,44 @@ function selChoose(){ const t=selectable[selIndex];
   el('trackselect').classList.add('hidden'); openCarSelect(); }
 function backToTitle(){ state='title'; el('trackselect').classList.add('hidden'); el('title').classList.remove('hidden'); }
 
-/* ---- Car select ---- */
-let csIndex=0, csBuilt=false;
-function buildCarSelect(){
-  const wrap=el('csCards'); wrap.innerHTML='';
-  CAR_CHOICES.forEach((c,i)=>{ const hexc='#'+new THREE.Color(c.color).getHexString();
-    const card=document.createElement('div'); card.className='ts-card';
-    card.innerHTML='<div class="cs-car" style="color:'+hexc+';background:linear-gradient(180deg,'+hexc+',rgba(0,0,0,.25))"></div>'+
-      '<div class="c-name">'+c.name+'</div><div class="c-place">Racer '+(i+1)+'</div>';
-    card.onmouseenter=()=>{ csIndex=i; refreshCar(); };
-    card.onclick=()=>{ csIndex=i; refreshCar(); csChoose(); };
-    wrap.appendChild(card); });
-  csBuilt=true;
+/* ---- Car select: a 3D showroom with the real car model ---- */
+let csIndex=0, previewCar=null;
+function setRaceCarsVisible(v){ cars.forEach(c=>{ c.mesh.visible=v; }); }
+function disposeCarPreview(car){ car.traverse(o=>{ if(o.geometry) o.geometry.dispose();
+  if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>{
+    if(m.map && m.map!==TEX_GLOW && m.map!==TEX_SMOKE && m.map.dispose) m.map.dispose(); }); } }); }
+function showPreviewCar(color){
+  if(previewCar){ scene.remove(previewCar); disposeCarPreview(previewCar); }
+  previewCar=makeCarMesh(color,1); previewCar.position.set(0,0.25,0);
+  previewCar.traverse(o=>{ if(o.isMesh) o.castShadow=true; });
+  scene.add(previewCar);
 }
-function refreshCar(){ const cards=el('csCards').children;
-  for(let i=0;i<cards.length;i++){ cards[i].classList.toggle('sel',i===csIndex);
-    if(i===csIndex) cards[i].scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}); } }
-function openCarSelect(){ if(!csBuilt) buildCarSelect();
-  state='carselect'; el('carselect').classList.remove('hidden'); csIndex=0; refreshCar(); }
+function refreshCar(){
+  const c=CAR_CHOICES[csIndex]; showPreviewCar(c.color);
+  const name=el('csName'); name.textContent=c.name; name.style.color='#'+new THREE.Color(c.color).getHexString();
+  const dots=el('csDots'); dots.innerHTML='';
+  CAR_CHOICES.forEach((_,i)=>{ const s=document.createElement('span'); if(i===csIndex)s.className='on'; dots.appendChild(s); });
+}
+function openCarSelect(){
+  state='carselect'; el('carselect').classList.remove('hidden'); setRaceCarsVisible(false);
+  if(playerName) el('csUser').value=playerName;
+  csIndex=Math.max(0,CAR_CHOICES.findIndex(c=>c.color===playerColor));
+  refreshCar();
+}
 function csMove(d){ csIndex=(csIndex+d+CAR_CHOICES.length)%CAR_CHOICES.length; refreshCar(); }
+function leaveCarSelect(){ el('carselect').classList.add('hidden'); if(previewCar){ scene.remove(previewCar); disposeCarPreview(previewCar); previewCar=null; } }
 function csChoose(){ const c=CAR_CHOICES[csIndex]; playerColor=c.color; playerCarName=c.name;
-  el('carselect').classList.add('hidden'); startCountdown(); }
-function carBackToTracks(){ state='select'; el('carselect').classList.add('hidden'); el('trackselect').classList.remove('hidden'); refreshSel(); }
+  playerName=(el('csUser').value.trim().toUpperCase())||'YOU';
+  leaveCarSelect(); startCountdown(); }
+function carBackToTracks(){ state='select'; leaveCarSelect(); setRaceCarsVisible(true);
+  el('trackselect').classList.remove('hidden'); refreshSel(); }
+function showroomCam(dt){
+  if(!previewCar) return;
+  previewCar.rotation.y += dt*0.5;
+  camera.position.lerp(V3(5.5,3.1,8.6), clamp(4*dt,0,1));
+  camera.lookAt(0,1.1,0);
+  camera.fov+=(42-camera.fov)*clamp(4*dt,0,1); camera.updateProjectionMatrix();
+}
 
 /* =====================================================================
    BOOT
@@ -1930,6 +1988,9 @@ function wireButtons(){
   el('resumeBtn').onclick=()=>togglePause();
   el('quitBtn').onclick=()=>{ state='title'; el('pause').classList.add('hidden'); el('hud').classList.add('hidden'); el('title').classList.remove('hidden'); };
   el('restartBtn').onclick=()=>{ el('results').classList.add('hidden'); startCountdown(); };
+  el('csPrev').onclick=()=>csMove(-1);
+  el('csNext').onclick=()=>csMove(1);
+  el('csRace').onclick=()=>csChoose();
 }
 
 async function boot(){
@@ -1950,9 +2011,9 @@ async function boot(){
     animate();
   }catch(e){ showFatal(e); return; }
   // ---- EYE-CANDY: load after the game is already running; failures must not block it ----
-  try{ buildRain(); }catch(e){ console.warn('rain failed',e); }
   try{ await initEnvironment(); }catch(e){ console.warn('env failed',e); }
   try{ await initBloom(); }catch(e){ console.warn('post failed',e); useBloom=false; }
+  prewarmThemes();   // pre-build every location so track/car select never hitches
 }
 boot();
 </script>
