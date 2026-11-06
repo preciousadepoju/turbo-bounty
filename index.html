@@ -1794,20 +1794,22 @@ function updateHUD(){
   drawMini();
 }
 function updateItemHUD(){}  // items removed
-let miniCtx;
-function drawMini(){
-  if(!miniCtx) miniCtx=el('mini').getContext('2d');
-  const g=miniCtx; g.clearRect(0,0,170,170);
+let miniCtx, miniBg;
+function buildMiniBg(){
+  miniBg=document.createElement('canvas'); miniBg.width=miniBg.height=170;
+  const g=miniBg.getContext('2d');
   g.lineWidth=3; g.strokeStyle='rgba(120,180,255,0.5)'; g.beginPath();
   for(let i=0;i<=samples.length;i+=4){ const s=samples[i%samples.length]; const [x,y]=worldToMini(s.p.x,s.p.z); i===0?g.moveTo(x,y):g.lineTo(x,y); }
   g.closePath(); g.stroke();
+}
+function drawMini(){
+  if(!miniCtx) miniCtx=el('mini').getContext('2d');
+  if(!miniBg) buildMiniBg();
+  const g=miniCtx; g.clearRect(0,0,170,170); g.drawImage(miniBg,0,0);  // static track blitted, not re-stroked
   cars.forEach(c=>{ const [x,y]=worldToMini(c.pos.x,c.pos.z); g.beginPath();
     g.fillStyle = c.isPlayer?'#fff':(c.rank===1?'#ffcf3a':hex(c.color));
     g.arc(x,y,c.isPlayer?4:3,0,Math.PI*2); g.fill();
     if(c.isPlayer){ g.strokeStyle='#17e6ff'; g.lineWidth=2; g.stroke(); } });
-  // pickups
-  g.fillStyle='rgba(68,255,204,0.9)';
-  pickups.forEach(p=>{ if(!p.active)return; const [x,y]=worldToMini(p.pos.x,p.pos.z); g.fillRect(x-1.5,y-1.5,3,3); });
 }
 let bannerT=0;
 function banner(text,color){ const b=el('banner'); b.textContent=text; b.style.color=color||'#fff';
