@@ -64,6 +64,10 @@
     80%{opacity:1;transform:translate(-50%,-50%) scale(1);}
     100%{opacity:0;transform:translate(-50%,-50%) scale(1.15);}
   }
+  #respawn{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);font-family:'Teko',sans-serif;
+    font-size:clamp(22px,4vw,42px);font-weight:600;letter-spacing:2px;color:#ff6a6a;text-shadow:0 0 18px rgba(255,40,40,.7);
+    opacity:0;white-space:nowrap;transition:opacity .2s;}
+  #respawn.show{opacity:1;}
   #speedo{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);text-align:center;}
   #kmh{font-size:40px;line-height:1;text-shadow:0 0 14px var(--neon-cyan);}
   #kmh small{font-size:14px;opacity:.7;}
@@ -87,7 +91,7 @@
     -webkit-background-clip:text;background-clip:text;color:transparent;
     filter:drop-shadow(0 0 26px rgba(255,43,214,.6));}
   .tagline{margin-top:10px;font-size:clamp(14px,2.4vw,22px);color:#cfefff;letter-spacing:2px;}
-  .btn{margin-top:30px;pointer-events:auto;cursor:pointer;font-weight:900;letter-spacing:2px;
+  .btn{margin-top:30px;pointer-events:auto;cursor:pointer;font-weight:700;letter-spacing:2px;
     font-size:26px;padding:16px 44px;border-radius:40px;border:3px solid var(--neon-cyan);
     background:rgba(23,230,255,.1);color:#fff;box-shadow:0 0 26px rgba(23,230,255,.4);
     transition:transform .1s,box-shadow .2s;}
@@ -125,6 +129,16 @@
     background:rgba(255,43,214,.14);box-shadow:0 0 30px rgba(255,43,214,.5);
     animation:startpulse 1.15s ease-in-out infinite;}
   @keyframes startpulse{50%{transform:scale(1.055);box-shadow:0 0 50px rgba(255,43,214,.95);}}
+  .tb-name{margin-top:26px;display:flex;flex-direction:column;align-items:center;gap:7px;}
+  .tb-name label{font-size:12px;letter-spacing:3px;color:#9fb6e8;font-weight:bold;}
+  #nameInput{pointer-events:auto;width:min(300px,78vw);text-align:center;font-family:'Rajdhani',sans-serif;
+    font-weight:600;font-size:20px;letter-spacing:3px;text-transform:uppercase;color:#fff;
+    background:rgba(8,6,20,.55);border:1px solid rgba(255,255,255,.3);border-radius:12px;padding:10px 14px;outline:none;
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:border-color .2s,box-shadow .2s;}
+  #nameInput:focus{border-color:var(--neon-cyan);box-shadow:0 0 18px rgba(23,230,255,.4);}
+  #nameInput::placeholder{color:rgba(255,255,255,.4);letter-spacing:2px;}
+  .tb-modes{margin-top:22px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center;}
+  .tb-modes .btn{margin-top:0;font-size:clamp(18px,3.2vw,24px);padding:13px 34px;}
   .tb-hint{margin-top:14px;font-size:13px;letter-spacing:3px;color:#9fb6e8;font-weight:bold;
     animation:blinkhint 1.3s steps(2,end) infinite;}
   @keyframes blinkhint{50%{opacity:.3;}}
@@ -242,6 +256,7 @@
   </div>
   <div id="speedo" class="panel"><div id="kmh">0<small> km/h</small></div></div>
   <div id="banner"></div>
+  <div id="respawn"></div>
 </div>
 
 <div id="touch">
@@ -256,8 +271,15 @@
     <div class="tb-logo"><span class="l1">TURBO</span><span class="l2">BOUNTY</span></div>
     <hr class="tb-rule"/>
     <div class="tb-tag">Lead the race · become the target</div>
-    <button id="startBtn" class="btn tb-start">▶&nbsp; PRESS START</button>
-    <div class="tb-hint">PRESS ENTER OR TAP START · SOUND ON</div>
+    <div class="tb-name">
+      <label for="nameInput">DRIVER NAME</label>
+      <input id="nameInput" maxlength="14" placeholder="ENTER NAME" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="tb-modes">
+      <button id="careerBtn" class="btn">▶&nbsp; CAREER</button>
+      <button id="quickBtn" class="btn mag">QUICK RACE</button>
+    </div>
+    <div class="tb-hint">CAREER · 5 LOCATIONS · 5 ROUNDS · BECOME CHAMPION</div>
   </div>
   <div id="ctrlbar">
     <span class="grp"><kbd>WASD</kbd><span class="slash">/</span><kbd class="arrows">↑↓←→</kbd> Drive</span>
@@ -284,7 +306,6 @@
       <button class="cs-arrow" id="csNext">▶</button>
     </div>
     <div class="cs-dots" id="csDots"></div>
-    <input id="csUser" class="cs-user" maxlength="14" placeholder="YOUR NAME" autocomplete="off" spellcheck="false" />
     <button id="csRace" class="btn tb-start">RACE&nbsp;▶</button>
   </div>
   <div class="ts-hint">◀ ▶ browse&nbsp;·&nbsp;ENTER race&nbsp;·&nbsp;ESC back</div>
@@ -354,13 +375,8 @@ const CFG = {
   HEAT_PER_SHOT: 0.05,
   HEAT_COOL: 0.42,        // per second
   MAX_HP: 100,
-  ROCKET_DMG: 55, ROCKET_BLAST: 16,
-  MINE_DMG: 60, MINE_BLAST: 13,
-  SHIELD_TIME: 5,
-  RESPAWN_TIME: 5,        // = ghost revenge duration
+  RESPAWN_TIME: 5,        // seconds wrecked before respawn
   INVINCIBLE_TIME: 2,
-  GHOST_SPEED: 1.5,       // ghost speed multiplier
-  GHOST_GLITCH: 1.5,      // seconds controls scrambled
   // bounty
   BOUNTY_RATE: 40,        // bounty points/sec while leading
   BOUNTY_BASE: 300,       // bonus for a kill
@@ -436,7 +452,7 @@ addEventListener('keydown',e=>{
   if(k==='escape') togglePause();
   if(k==='m') toggleMute();
   if(k==='t' && state!=='results') { TRAILER=!TRAILER; applyTrailer(); banner(TRAILER?'TRAILER MODE ON':'TRAILER MODE OFF', '#ffcf3a'); }
-  if(k==='enter'){ if(state==='title') el('startBtn').click(); else if(state==='results') el('restartBtn').click(); }
+  if(k==='enter'){ if(state==='title') el('careerBtn').click(); else if(state==='results') el('restartBtn').click(); }
   initAudioOnce();
 });
 addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
@@ -1241,10 +1257,10 @@ class Car{
     this.color=isPlayer?playerColor:aiColorFor(idx);
     this.mesh=makeCarMesh(this.color, this.isPlayer?1:(idx+1), isPlayer?playerShape:aiShapeFor(idx)); scene.add(this.mesh);
     this.pos=V3(); this.vel=V3(); this.yaw=0; this.y=0; this.vy=0; this.airborne=false;
-    this.hp=CFG.MAX_HP; this.mode='racing'; // racing|ghost
+    this.hp=CFG.MAX_HP; this.mode='racing'; // racing|dead
     this.gunHeat=0; this.gunCool=0; this.overheated=false;
-    this.boostT=0; this.shieldT=0; this.invincT=0; this.glitchT=0; this.ghostT=0;
-    this.item=null; // 'rocket'|'mine'|'shield'
+    this.boostT=0; this.shieldT=0; this.invincT=0; this.respawnT=0;
+    this.item=null;
     this.lap=0; this.sampleIdx=0; this.prevIdx=0; this.progress=0;
     this.nextCP=1; this.lastCP=0;
     this.bountyHold=0; this.points=0; this.kills=0;
@@ -1273,19 +1289,17 @@ class Car{
   get speed(){ return this.vel.length(); }
 
   update(dt,ctrl){
-    if(this.mode==='ghost') return this.updateGhost(dt,ctrl);
+    if(this.mode==='dead') return this.updateDead(dt);
     // timers
     if(this.boostT>0)this.boostT-=dt;
     if(this.shieldT>0){this.shieldT-=dt; this.shieldMesh.visible=true;} else this.shieldMesh.visible=false;
     if(this.invincT>0)this.invincT-=dt;
-    if(this.glitchT>0)this.glitchT-=dt;
     this.gunCool=Math.max(0,this.gunCool-dt);
 
     // gun heat cool
     if(this.gunHeat>0){ this.gunHeat=Math.max(0,this.gunHeat-CFG.HEAT_COOL*dt); if(this.overheated&&this.gunHeat<=0.15)this.overheated=false; }
 
     let throttle=ctrl.throttle, steer=ctrl.steer, handbrake=ctrl.handbrake;
-    if(this.glitchT>0){ steer=-steer; throttle*=0.4; } // scrambled controls
 
     const boost=this.boostT>0?CFG.BOOST_MULT:1;
     const maxSpd=CFG.MAX_SPEED*boost;
@@ -1352,51 +1366,17 @@ class Car{
     this.updateTrackProgress();
     this.syncMesh(dt,fAmt);
   }
-  updateGhost(dt,ctrl){
-    this.ghostT-=dt;
-    this.invincT=1; // invulnerable
-    const maxSpd=CFG.MAX_SPEED*CFG.GHOST_SPEED;
-    let throttle=ctrl.throttle, steer=ctrl.steer;
-    const fwd=this.forward();
-    let fAmt=this.vel.dot(fwd);
-    fAmt+=CFG.ACCEL*1.5*(throttle>0?throttle:0.4)*dt;  // ghosts keep moving
-    if(throttle<0) fAmt-=CFG.BRAKE*dt;
-    fAmt-=fAmt*0.4*dt; fAmt=clamp(fAmt,-20,maxSpd);
-    const latVec=this.vel.clone().addScaledVector(fwd,-fAmt); latVec.multiplyScalar(Math.max(0,1-9*dt));
-    const spdFactor=clamp(Math.abs(fAmt)/18,0,1);
-    this.yaw+=steer*CFG.TURN_RATE*1.3*dt*spdFactor; this._steer=steer; this.braking=false;
-    this.vel.copy(this.forward()).multiplyScalar(fAmt).add(latVec);
-    this.pos.addScaledVector(this.vel,dt);
-    this.collideWalls(); this.updateTrackProgress();
-    this.syncMesh(dt,fAmt);
-    // ghost trail
-    if(Math.random()<0.5) fx.smoke(this.pos.clone().setY(1.5),this.color,3,true);
-    // glitch rivals on contact
-    cars.forEach(o=>{ if(o===this||o.mode==='ghost') return;
-      if(o.invincT>0) return;
-      if(this.pos.distanceTo(o.pos)<5){ o.glitchT=CFG.GHOST_GLITCH; sfx.ghost();
-        if(o.isPlayer){ glitchFlash(); banner('GLITCHED!','#5dff8f'); }
-        else if(this.isPlayer){ banner('REVENGE!','#5dff8f'); feed(`<span style="color:#5dff8f">${this.name}</span> glitched ${o.name}`); }
-        fx.ring(o.pos.clone().setY(1),0x5dff8f,6);
-      }
-    });
-    if(this.ghostT<=0) this.respawn();
+  updateDead(dt){
+    this.respawnT-=dt;
+    if(this.isPlayer){ const r=el('respawn'); if(r){ r.classList.add('show'); r.textContent='WRECKED — RESPAWN IN '+Math.ceil(Math.max(0,this.respawnT)); } }
+    if(this.respawnT<=0) this.respawn();
   }
   respawn(){
     const cpIndex=checkpointIdx[this.lastCP]!==undefined?checkpointIdx[this.lastCP]:0;
     this.placeAt(cpIndex, this.isPlayer?0:this.aiLane);
     this.mode='racing'; this.hp=CFG.MAX_HP; this.invincT=CFG.INVINCIBLE_TIME;
-    this.setGhostLook(false);
     this.mesh.visible=true;
-  }
-  setGhostLook(on){
-    const op=on?0.35:1;
-    this.mesh.traverse(o=>{
-      if(o.isMesh && o!==this.shieldMesh && o.material){
-        o.material.transparent = on || o.material.transparent;
-        o.material.opacity = on ? op : 1;
-      }
-    });
+    if(this.isPlayer){ const r=el('respawn'); if(r) r.classList.remove('show'); banner('GO GET THEM!','#17e6ff'); }
   }
   collideWalls(){
     const s=samples[this.sampleIdx];
@@ -1454,7 +1434,7 @@ class Car{
    COMBAT
    ===================================================================== */
 function fireGun(car){
-  if(car.mode==='ghost'||car.overheated||car.gunCool>0) return;
+  if(car.mode==='dead'||car.overheated||car.gunCool>0) return;
   car.gunCool=CFG.GUN_RATE;
   car.gunHeat+=CFG.HEAT_PER_SHOT;
   if(car.gunHeat>=1){ car.gunHeat=1; car.overheated=true; }
@@ -1480,7 +1460,7 @@ function updateBullets(dt){
     b.life-=dt; b.mesh.position.addScaledVector(b.vel,dt);
     b.mesh.lookAt(b.mesh.position.clone().add(b.vel));
     if(b.life<=0){ b.active=false; b.mesh.visible=false; return; }
-    for(const c of cars){ if(c===b.owner||c.mode==='ghost') continue;
+    for(const c of cars){ if(c===b.owner||c.mode==='dead') continue;
       if(c.invincT>0||c.shieldT>0){ if(b.mesh.position.distanceTo(c.pos)<4.5 && c.shieldT>0){ fx.ring(c.pos.clone().setY(1.5),0x5dff8f,3); b.active=false;b.mesh.visible=false;} continue; }
       if(b.mesh.position.distanceTo(c.pos.clone().setY(1.2))<3.2){
         b.active=false; b.mesh.visible=false; fx.spark(b.mesh.position.clone(),c.color);
@@ -1513,7 +1493,7 @@ function updateRockets(dt){
   for(let i=rockets.length-1;i>=0;i--){ const r=rockets[i];
     r.life-=dt;
     // acquire/retarget: prefer leader, else nearest ahead enemy
-    if(!r.target||r.target.mode==='ghost'||r.target.finished){ r.target=acquireTarget(r.owner,r.mesh.position); }
+    if(!r.target||r.target.mode==='dead'||r.target.finished){ r.target=acquireTarget(r.owner,r.mesh.position); }
     if(r.target){ const to=r.target.pos.clone().setY(1.4).sub(r.mesh.position).normalize();
       r.vel.lerp(to.multiplyScalar(Math.max(70,r.vel.length()+40*dt)),clamp(3*dt,0,1)); }
     r.vel.setLength(Math.min(120,r.vel.length()+60*dt));
@@ -1521,7 +1501,7 @@ function updateRockets(dt){
     r.mesh.lookAt(r.mesh.position.clone().add(r.vel));
     fx.smoke(r.mesh.position.clone(),0xff8844,2,true);
     let hit=false;
-    for(const c of cars){ if(c===r.owner||c.mode==='ghost') continue;
+    for(const c of cars){ if(c===r.owner||c.mode==='dead') continue;
       if(r.mesh.position.distanceTo(c.pos.clone().setY(1.4))<5){ hit=true; break; } }
     if(hit||r.life<=0){ explodeAoE(r.mesh.position.clone(),CFG.ROCKET_BLAST,CFG.ROCKET_DMG,r.owner); scene.remove(r.mesh); rockets.splice(i,1); }
   }
@@ -1529,7 +1509,7 @@ function updateRockets(dt){
 function acquireTarget(owner,from){
   let best=null,bestScore=1e9; const leader=cars.find(c=>c.rank===1&&c!==owner&&c.mode==='racing');
   if(leader){ return leader; }
-  cars.forEach(c=>{ if(c===owner||c.mode==='ghost') return; const d=from.distanceTo(c.pos); if(d<bestScore){bestScore=d;best=c;} });
+  cars.forEach(c=>{ if(c===owner||c.mode==='dead') return; const d=from.distanceTo(c.pos); if(d<bestScore){bestScore=d;best=c;} });
   return best;
 }
 function spawnMine(car){
@@ -1546,7 +1526,7 @@ function updateMines(dt){
   for(let i=mines.length-1;i>=0;i--){ const m=mines[i]; m.arm-=dt; m.life-=dt;
     m.mesh.rotation.y+=dt*3; m.mesh.children[1].rotation.z+=dt*4;
     let boom=m.life<=0;
-    if(m.arm<=0){ for(const c of cars){ if(c===m.owner&&m.life>11)continue; if(c.mode==='ghost')continue;
+    if(m.arm<=0){ for(const c of cars){ if(c===m.owner&&m.life>11)continue; if(c.mode==='dead')continue;
       if(m.mesh.position.distanceTo(c.pos)<5){ boom=true; break; } } }
     if(boom){ explodeAoE(m.mesh.position.clone(),CFG.MINE_BLAST,CFG.MINE_DMG,m.owner); scene.remove(m.mesh); mines.splice(i,1); }
   }
@@ -1554,20 +1534,20 @@ function updateMines(dt){
 function explodeAoE(pos,radius,dmg,owner){
   fx.explosion(pos,radius);
   sfx.explosion();
-  cars.forEach(c=>{ if(c.mode==='ghost')return; const d=c.pos.distanceTo(pos); if(d<radius){
+  cars.forEach(c=>{ if(c.mode==='dead')return; const d=c.pos.distanceTo(pos); if(d<radius){
     const falloff=1-d/radius; applyDamage(c,dmg*falloff,owner);
     const push=c.pos.clone().sub(pos).setY(0).normalize().multiplyScalar(30*falloff); c.vel.add(push);
   }});
   if(pos.distanceTo(player.pos)<40) camShakeAdd(clamp(radius/8,0.3,1.2));
 }
 function applyDamage(car,amount,attacker){
-  if(car.mode==='ghost'||car.invincT>0||car.shieldT>0){ if(car.shieldT>0&&car.isPlayer){} return; }
+  if(car.mode==='dead'||car.invincT>0||car.shieldT>0){ if(car.shieldT>0&&car.isPlayer){} return; }
   car.hp-=amount;
   if(car.isPlayer){ dmgFlash(Math.min(0.5,amount/60)); camShakeAdd(clamp(amount/80,0.1,0.5)); }
   if(car.hp<=0){ destroyCar(car,attacker); }
 }
 function destroyCar(car,attacker){
-  if(car.mode==='ghost') return;
+  if(car.mode==='dead') return;
   fx.explosion(car.pos.clone().setY(1.5),18); fx.debris(car.pos.clone().setY(1.5),car.color); sfx.explosion();
   camShakeAdd(car.isPlayer?1.4:(car.pos.distanceTo(player.pos)<60?0.7:0));
   // brief burning wreck left at the spot
@@ -1576,7 +1556,7 @@ function destroyCar(car,attacker){
     fx.smoke(wp.clone().add(V3(rand(-1.6,1.6),rand(0,1.8),rand(-1.6,1.6))), (bt%2)?0xff6a22:0x443028, 2.4, false); },170);
   // bounty steal
   const wasLeader=car.rank===1 && car.bountyHold>5;
-  if(attacker && attacker!==car && attacker.mode!=='ghost'){
+  if(attacker && attacker!==car && attacker.mode!=='dead'){
     const gained=CFG.BOUNTY_BASE + (wasLeader?Math.floor(car.bountyHold):0);
     attacker.points+=gained; attacker.kills++;
     attacker.boostT=CFG.BOOST_TIME; if(attacker.isPlayer) sfx.boost();
@@ -1589,17 +1569,16 @@ function destroyCar(car,attacker){
   }
   car.bountyHold=0;
   if(car.isPlayer){ banner('YOU GOT WRECKED','#ff3b3b'); }
-  // enter ghost mode
-  car.mode='ghost'; car.ghostT=CFG.RESPAWN_TIME; car.vy=0; car.y=0; car.airborne=false;
-  car.setGhostLook(true); car.crown.visible=false;
-  if(car.isPlayer) banner2('GHOST REVENGE — ram a rival!','#5dff8f');
+  // wrecked — hide and respawn after a delay
+  car.mode='dead'; car.respawnT=CFG.RESPAWN_TIME; car.vy=0; car.y=0; car.airborne=false;
+  car.vel.set(0,0,0); car.mesh.visible=false; car.crown.visible=false;
 }
 function hex(c){ return '#'+new THREE.Color(c).getHexString(); }
 
 /* car-to-car bumping */
 function carCollisions(){
   for(let i=0;i<cars.length;i++) for(let j=i+1;j<cars.length;j++){
-    const a=cars[i],b=cars[j]; if(a.mode==='ghost'||b.mode==='ghost')continue;
+    const a=cars[i],b=cars[j]; if(a.mode==='dead'||b.mode==='dead')continue;
     const d=a.pos.distanceTo(b.pos); const min=5;
     if(d<min && d>0.01){ const n=a.pos.clone().sub(b.pos).setY(0).normalize(); const overlap=(min-d)/2;
       a.pos.addScaledVector(n,overlap); b.pos.addScaledVector(n,-overlap);
@@ -1694,7 +1673,7 @@ function aiControl(car,dt){
   // slow for sharp turns
   const futureIdx=(car.sampleIdx+lookSamples+10)%N;
   const curveAng=Math.abs(samples[futureIdx].t.angleTo(car.forward()));
-  if(curveAng>0.8 && spd>CFG.MAX_SPEED*0.55){ ctrl.throttle=0.2; if(curveAng>1.2&&spd>40) ctrl.handbrake=true; }
+  if(curveAng>0.8 && spd>CFG.MAX_SPEED*(0.55+0.14*aiDifficulty)){ ctrl.throttle=0.2+0.35*aiDifficulty; if(curveAng>1.2&&spd>40) ctrl.handbrake=true; }
   // occasional lane change
   car.aiReactT-=dt; if(car.aiReactT<=0){ car.aiReactT=rand(2,5); car.aiLane=clamp(car.aiLane+rand(-4,4),-9,9); }
   // stuck recovery
@@ -1707,7 +1686,7 @@ function aiControl(car,dt){
   if(tgt && tgt.mode==='racing'){
     const dir=tgt.pos.clone().sub(car.pos); const dist=dir.length();
     const ang=car.forward().angleTo(dir.normalize());
-    if(dist<120 && ang<0.4 && !car.overheated){ if(car.aiFireT<=0){ fireGun(car); car.aiFireT=rand(0.06,0.14)*(TRAILER?0.6:1); } }
+    if(dist<120 && ang<(0.4+0.18*aiDifficulty) && !car.overheated){ if(car.aiFireT<=0){ fireGun(car); car.aiFireT=rand(0.06,0.14)*(TRAILER?0.6:1)*(1-0.3*aiDifficulty); } }
     // use item
     if(car.item){
       if(car.item==='rocket' && dist<140 && ang<0.6) useItem(car);
@@ -1718,9 +1697,9 @@ function aiControl(car,dt){
 
   return ctrl;
 }
-function nearestAhead(car){ let best=null,bd=1e9; cars.forEach(c=>{ if(c===car||c.mode==='ghost')return;
+function nearestAhead(car){ let best=null,bd=1e9; cars.forEach(c=>{ if(c===car||c.mode==='dead')return;
   const to=c.pos.clone().sub(car.pos); if(car.forward().dot(to)>0){ const d=to.length(); if(d<bd){bd=d;best=c;} } }); return best; }
-function nearestBehind(car,range){ return cars.some(c=>{ if(c===car||c.mode==='ghost')return false;
+function nearestBehind(car,range){ return cars.some(c=>{ if(c===car||c.mode==='dead')return false;
   const to=c.pos.clone().sub(car.pos); return car.forward().dot(to)<0 && to.length()<range; }); }
 
 /* =====================================================================
@@ -1731,7 +1710,7 @@ function updateRanking(dt){
   sorted.forEach((c,i)=>c.rank=i+1);
   const leader=sorted[0];
   cars.forEach(c=>{ c.crown.visible=(c===leader && c.mode==='racing');
-    c.mesh.userData.glow.material.color.setHex(c===leader?0xffcf3a:(c.mode==='ghost'?0x5dff8f:c.color));
+    c.mesh.userData.glow.material.color.setHex(c===leader?0xffcf3a:(c.mode==='dead'?0x5dff8f:c.color));
   });
   if(leader.mode==='racing'){ leader.bountyHold+=CFG.BOUNTY_RATE*dt; }
 }
@@ -1740,7 +1719,7 @@ function updateRanking(dt){
    CAMERA
    ===================================================================== */
 function updateCamera(dt){
-  const target = player.mode==='ghost'?player:player;
+  const target = player.mode==='dead'?player:player;
   const back=target.forward().clone().multiplyScalar(-CFG.CAM_DIST);
   const camPos=target.pos.clone().add(back).setY(target.y+CFG.CAM_HEIGHT);
   camera.position.lerp(camPos,clamp(CFG.CAM_LERP*dt,0,1));
@@ -1861,23 +1840,52 @@ function togglePause(){
   if(state==='playing'){ state='paused'; el('pause').classList.remove('hidden'); if(engGain)engGain.gain.value=0; }
   else if(state==='paused'){ state='playing'; el('pause').classList.add('hidden'); }
 }
-const FINISH_PTS=[1200,800,550,400,300,200];  // points for 1st..6th place
+const FINISH_PTS=[1200,800,550,400,300,200];   // quick-race score bonus for 1st..6th
+const CHAMP_PTS=[25,18,15,12,10,8];            // championship points per round
+let resultsAction=()=>{};
+function raceOrder(){
+  const sorted=[...cars].sort((a,b)=> (b.lap - a.lap) || (b.progress-a.progress));
+  sorted.sort((a,b)=>{ if(a.finished&&b.finished) return a.finishTime-b.finishTime; if(a.finished)return -1; if(b.finished)return 1; return b.progress-a.progress; });
+  return sorted;
+}
 function endRace(){
   state='results'; el('results').classList.remove('hidden');
-  const sorted=[...cars].sort((a,b)=> (b.lap - a.lap) || (b.progress-a.progress));
-  // finished ones first by finishTime
-  sorted.sort((a,b)=>{ if(a.finished&&b.finished) return a.finishTime-b.finishTime; if(a.finished)return -1; if(b.finished)return 1; return b.progress-a.progress; });
+  const r=el('respawn'); if(r) r.classList.remove('show');
+  const sorted=raceOrder();
   const pr=sorted.findIndex(c=>c.isPlayer)+1;
-  el('resTitle').textContent = pr===1?'🏆 YOU WON!':'RACE OVER — '+pr+(ord[pr]||'th')+' PLACE';
-  let html='<tr><th>#</th><th>Racer</th><th>Kills</th><th>Bounty</th><th>Finish</th><th>Total</th></tr>';
-  sorted.forEach((c,i)=>{
-    const fin=FINISH_PTS[i]||100, bounty=Math.floor(c.bountyHold), total=c.points+bounty+fin;
-    html+=`<tr class="${c.isPlayer?'me-row':''}"><td>${i+1}</td><td style="color:${hex(c.color)}">${c.name}</td>`+
-      `<td>${c.kills}</td><td>${bounty}</td><td>+${fin}</td><td><b>${total}</b></td></tr>`;
-  });
-  el('resTable').innerHTML=html;
-  const note=el('resNote');
-  if(note) note.textContent='Score = kills (300 each) + bounty earned while leading + finish-place bonus.';
+  sorted.forEach((c,i)=>{ c.lastRacePts = FINISH_PTS[i]||100; });
+  const note=el('resNote'), btn=el('restartBtn');
+  if(champActive){
+    sorted.forEach((c,i)=>{ champPoints[c.idx]+=(CHAMP_PTS[i]||5); });
+    const last = champRound>=THEMES.length-1;
+    const standings=[...cars].sort((a,b)=>champPoints[b.idx]-champPoints[a.idx]);
+    let html='<tr><th>#</th><th>Racer</th><th>This race</th><th>Championship</th></tr>';
+    standings.forEach((c,i)=>{ html+=`<tr class="${c.isPlayer?'me-row':''}"><td>${i+1}</td><td style="color:${hex(c.color)}">${c.name}</td>`+
+      `<td>+${CHAMP_PTS[sorted.indexOf(c)]||5}</td><td><b>${champPoints[c.idx]}</b></td></tr>`; });
+    el('resTable').innerHTML=html;
+    if(last){
+      const champ=standings[0];
+      el('resTitle').textContent = champ.isPlayer?'🏆 YOU ARE THE CHAMPION!':'CHAMPION — '+champ.name;
+      if(note) note.textContent='Final standings after '+THEMES.length+' rounds. You finished '+pr+(ord[pr]||'th')+' this round.';
+      btn.textContent='PLAY AGAIN';
+      resultsAction=()=>{ goTitle(); };
+    } else {
+      el('resTitle').textContent='ROUND '+(champRound+1)+' / '+THEMES.length+' — '+THEMES[champRound].name+' · YOU: '+pr+(ord[pr]||'th');
+      if(note) note.textContent='Championship points: 1st 25 · 2nd 18 · 3rd 15 · 4th 12 · 5th 10 · 6th 8';
+      btn.textContent='NEXT ROUND ▶';
+      resultsAction=()=>{ startRound(champRound+1); };
+    }
+  } else {
+    el('resTitle').textContent = pr===1?'🏆 YOU WON!':'RACE OVER — '+pr+(ord[pr]||'th')+' PLACE';
+    let html='<tr><th>#</th><th>Racer</th><th>Kills</th><th>Bounty</th><th>Finish</th><th>Total</th></tr>';
+    sorted.forEach((c,i)=>{ const fin=FINISH_PTS[i]||100, bounty=Math.floor(c.bountyHold), total=c.points+bounty+fin;
+      html+=`<tr class="${c.isPlayer?'me-row':''}"><td>${i+1}</td><td style="color:${hex(c.color)}">${c.name}</td>`+
+        `<td>${c.kills}</td><td>${bounty}</td><td>+${fin}</td><td><b>${total}</b></td></tr>`; });
+    el('resTable').innerHTML=html;
+    if(note) note.textContent='Score = kills (300 each) + bounty while leading + finish bonus.';
+    btn.textContent='RACE AGAIN';
+    resultsAction=()=>{ el('results').classList.add('hidden'); startCountdown(); };
+  }
 }
 function applyTrailer(){
   if(TRAILER){ CFG._savedHP=CFG._savedHP||CFG.MAX_HP; cars.forEach(c=>{ c.hp=Math.max(c.hp,150); }); }
@@ -1918,20 +1926,12 @@ function step(dt){
   player.update(dt,input);
   if(player.mode==='racing' && input.fire) fireGun(player);
   // AI
-  aiCars.forEach(c=>{ const ctrl=(c.mode==='ghost')?aiGhostControl(c):aiControl(c,dt); c.update(dt,ctrl); });
+  aiCars.forEach(c=>{ c.update(dt, c.mode==='dead'?null:aiControl(c,dt)); });
   carCollisions();
   updateBullets(dt);
   updateRanking(dt);
   updateCamera(dt);
   updateHUD();
-}
-function aiGhostControl(car){
-  // steer toward player (revenge) or nearest living rival
-  let tgt=player.mode==='racing'?player:cars.find(c=>c.mode==='racing'&&c!==car);
-  if(!tgt) return {throttle:1,steer:0,handbrake:false};
-  const to=tgt.pos.clone().sub(car.pos); const desiredYaw=Math.atan2(to.x,to.z);
-  let d=desiredYaw-car.yaw; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2;
-  return {throttle:1,steer:clamp(d*2.5,-1,1),handbrake:false};
 }
 function idleCam(dt){
   // cinematic low sweep flying along the neon track
@@ -1949,6 +1949,17 @@ function idleCam(dt){
 /* =====================================================================
    TRACK SELECT
    ===================================================================== */
+/* ---- Game modes & championship ---- */
+let gameMode='quick', champActive=false, champRound=0, champPoints=[0,0,0,0,0,0], aiDifficulty=0;
+function setNameFromInput(){ const v=((el('nameInput')&&el('nameInput').value)||'').trim().toUpperCase(); playerName=v||'YOU'; }
+function startCareer(){ initAudioOnce(); setNameFromInput(); gameMode='career'; champActive=true; champRound=0; champPoints=[0,0,0,0,0,0];
+  el('title').classList.add('hidden'); openCarSelect(); }
+function startQuick(){ initAudioOnce(); setNameFromInput(); gameMode='quick'; champActive=false; aiDifficulty=0; openSelect(); }
+function startRound(r){ champRound=r; aiDifficulty=THEMES.length>1?r/(THEMES.length-1):0; applyTheme(THEMES[r]);
+  el('results').classList.add('hidden'); startCountdown(); }
+function goTitle(){ state='title'; champActive=false;
+  el('results').classList.add('hidden'); el('hud').classList.add('hidden'); el('title').classList.remove('hidden'); }
+
 let selIndex=0, selectable=[];
 function buildTrackSelect(){
   selectable=THEMES.concat([{id:'random',name:'RANDOM',place:'Surprise me',desc:'A random location each race.',accentA:0xffffff,accentB:0x888888}]);
@@ -1997,17 +2008,17 @@ function refreshCar(){
 }
 function openCarSelect(){
   state='carselect'; el('carselect').classList.remove('hidden'); setRaceCarsVisible(false);
-  if(playerName) el('csUser').value=playerName;
   csIndex=Math.max(0,CAR_CHOICES.findIndex(c=>c.color===playerColor));
   refreshCar();
 }
 function csMove(d){ csIndex=(csIndex+d+CAR_CHOICES.length)%CAR_CHOICES.length; refreshCar(); }
 function leaveCarSelect(){ el('carselect').classList.add('hidden'); if(previewCar){ scene.remove(previewCar); disposeCarPreview(previewCar); previewCar=null; } }
 function csChoose(){ const c=CAR_CHOICES[csIndex]; playerColor=c.color; playerCarName=c.name; playerShape=c.shape;
-  playerName=(el('csUser').value.trim().toUpperCase())||'YOU';
-  leaveCarSelect(); startCountdown(); }
-function carBackToTracks(){ state='select'; leaveCarSelect(); setRaceCarsVisible(true);
-  el('trackselect').classList.remove('hidden'); refreshSel(); }
+  leaveCarSelect();
+  if(gameMode==='career') startRound(0); else startCountdown(); }
+function carBackToTracks(){ leaveCarSelect(); setRaceCarsVisible(true);
+  if(gameMode==='career'){ state='title'; el('title').classList.remove('hidden'); }
+  else { state='select'; el('trackselect').classList.remove('hidden'); refreshSel(); } }
 function showroomCam(dt){
   if(!previewCar) return;
   previewCar.rotation.y += dt*0.5;
@@ -2037,10 +2048,11 @@ addEventListener('unhandledrejection', ev=>{ console.error('unhandled', ev.reaso
 function wireButtons(){
   el('ctrlToggle').onclick=()=>{ controlsMode = controlsMode==='auto'?'on':(controlsMode==='on'?'off':'auto');
     el('ctrlToggle').textContent=controlsMode.toUpperCase(); applyControlsVisibility(); };
-  el('startBtn').onclick=()=>{ openSelect(); };
+  el('careerBtn').onclick=()=>{ startCareer(); };
+  el('quickBtn').onclick=()=>{ startQuick(); };
   el('resumeBtn').onclick=()=>togglePause();
-  el('quitBtn').onclick=()=>{ state='title'; el('pause').classList.add('hidden'); el('hud').classList.add('hidden'); el('title').classList.remove('hidden'); };
-  el('restartBtn').onclick=()=>{ el('results').classList.add('hidden'); startCountdown(); };
+  el('quitBtn').onclick=()=>{ goTitle(); el('pause').classList.add('hidden'); };
+  el('restartBtn').onclick=()=>{ resultsAction(); };
   el('csPrev').onclick=()=>csMove(-1);
   el('csNext').onclick=()=>csMove(1);
   el('csRace').onclick=()=>csChoose();
