@@ -383,6 +383,7 @@ try {
 const CFG = {
   LAPS: 3,
   AI_COUNT: 5,
+  TRAFFIC_COUNT: 12,      // civilian traffic to weave through
   ROAD_HALF: 15,          // road half-width (collision)
   SAMPLES: 420,           // track resolution / progress granularity
   // driving
@@ -439,7 +440,9 @@ const rand=(a,b)=>a+Math.random()*(b-a);
 const UP = V3(0,1,0);
 const _s1=new THREE.Vector3(), _s2=new THREE.Vector3(); // reusable scratch (avoid per-frame allocations)
 const _col=new THREE.Color(), _col2=new THREE.Color();
+const _m=new THREE.Matrix4(), _q=new THREE.Quaternion(), _e=new THREE.Euler(), _sc=new THREE.Vector3();
 let weather={rain:0,tgtRain:0,tod:0}, weatherGrip=1, willRain=false, rainAtFrac=0.5, rainAnnounced=false;
+let traffic=[], trafficMesh=null;
 
 let renderer, scene, camera, composer, bloomPass, fxaaPass, useBloom=false;
 let moon=null, envRT=null, rainSystem=null, lightningT=6, RoundedBox=null;
@@ -914,6 +917,7 @@ function buildTrack(){
   buildRamp(samples[ri]);
 
   // (sky, scenery, lights & fog are applied per-theme via applyTheme)
+  buildTraffic();
   computeMiniPts();
 }
 function edgeWall(samples,offset,color){
@@ -1191,6 +1195,42 @@ function updateWeather(dt){
   if(roadMat) roadMat.roughness=currentTheme.roadRough*(1-0.55*rn);   // wet = reflective
   weatherGrip = 1 - 0.28*rn;                                          // slippery in the rain
   if(rainSystem){ rainSystem.points.visible=rn>0.03; rainSystem.points.material.opacity=rn*0.5; }
+}
+/* ---- Live traffic (one InstancedMesh = one draw call) ---- */
+function buildTraffic(){
+  const N=samples.length, COUNT=CFG.TRAFFIC_COUNT;
+  const geo=new THREE.BoxGeometry(2,1.1,4.2);
+  const mat=new THREE.MeshStandardMaterial({roughness:0.5,metalness:0.3});
+  trafficMesh=new THREE.InstancedMesh(geo,mat,COUNT); trafficMesh.frustumCulled=false; scene.add(trafficMesh);
+  const lanes=[-7.5,-3.5,3.5,7.5], carCols=[0xdddddd,0x9aa0aa,0x33425a,0x6a3a2a,0x245038];
+  traffic=[];
+  for(let i=0;i<COUNT;i++){ const bus=Math.random()<0.3;
+    traffic.push({ ti:(i/COUNT)*N+rand(-4,4), lane:lanes[(Math.random()*lanes.length)|0], wspeed:rand(18,30), bus, pos:new THREE.Vector3(), nmReady:true });
+    trafficMesh.setColorAt(i,_col.setHex(bus?0xf2c21a:carCols[(Math.random()*carCols.length)|0])); }
+  if(trafficMesh.instanceColor) trafficMesh.instanceColor.needsUpdate=true;
+}
+function resetTraffic(){ if(!trafficMesh) return; const N=samples.length;
+  traffic.forEach((tr,i)=>{ tr.ti=(i/traffic.length)*N+rand(-4,4); tr.nmReady=true; }); }
+function updateTraffic(dt){
+  if(!trafficMesh) return;
+  const N=samples.length, spacing=trackLen/N, racing=(state==='playing');
+  for(let i=0;i<traffic.length;i++){ const tr=traffic[i];
+    tr.ti += (tr.wspeed/spacing)*dt; const idx=((tr.ti|0)%N+N)%N, s=samples[idx];
+    tr.pos.copy(s.p).addScaledVector(s.side,tr.lane).setY(tr.bus?1.1:0.55);
+    _e.set(0,Math.atan2(s.t.x,s.t.z),0); _q.setFromEuler(_e);
+    _sc.set(tr.bus?1.25:1, tr.bus?2:1, tr.bus?1.7:1);
+    _m.compose(tr.pos,_q,_sc); trafficMesh.setMatrixAt(i,_m);
+    if(racing){ for(const c of cars){ if(c.mode!=='racing') continue;
+      const d=c.pos.distanceTo(tr.pos);
+      if(d<4.3 && d>0.01){ _s1.copy(c.pos).sub(tr.pos).setY(0).normalize(); c.pos.addScaledVector(_s1,4.3-d);
+        const into=c.vel.dot(_s1); if(into<0) c.vel.addScaledVector(_s1,-into*1.1); c.vel.multiplyScalar(0.82);
+        if(c.isPlayer){ camShakeAdd(0.4); dmgFlash(0.2); } }
+      else if(c.isPlayer){ if(d<7 && player.speed>28 && tr.nmReady){ tr.nmReady=false;
+          player.nitro=Math.min(1,player.nitro+0.12); player.points+=40; announce('NEAR MISS!','#5dff8f'); }
+        if(d>14) tr.nmReady=true; }
+    } }
+  }
+  trafficMesh.instanceMatrix.needsUpdate=true;
 }
 function resetWeatherVisuals(){
   weather.rain=0; weather.tgtRain=0; weather.tod=0; weatherGrip=1; rainAnnounced=false;
@@ -1984,7 +2024,7 @@ function startCountdown(){
     if(n>0){ popCount(n); tone(440,0.15,'square',0.2); }
     else if(n===0){ popCount('GO!'); tone(880,0.4,'square',0.25); }
     else { clearInterval(iv); cd.classList.add('hidden'); state='playing'; raceStartClock=performance.now(); lapStartTime=raceStartClock; lastLapTime=0; prevLeaderIsPlayer=false;
-      weather.rain=0; weather.tgtRain=0; weather.tod=0; weatherGrip=1; willRain=Math.random()<0.35; rainAtFrac=rand(0.3,0.6); rainAnnounced=false;
+      weather.rain=0; weather.tgtRain=0; weather.tod=0; weatherGrip=1; willRain=Math.random()<0.35; rainAtFrac=rand(0.3,0.6); rainAnnounced=false; resetTraffic();
       // launch: engines bark and the camera kicks, but speed builds naturally (no instant boost)
       sfx.boost(); camShakeAdd(0.5); camera.fov=84; camera.updateProjectionMatrix();
     } },800);
@@ -2062,7 +2102,7 @@ function animate(){
     else if(state==='carselect'){ showroomCam(dt); }
     else if(state==='title'||state==='select'){ idleCam(dt); }
     fx && fx.update(sdt);
-    updateRain(sdt); updateLightning(sdt); updateThemePFX(sdt);
+    updateRain(sdt); updateLightning(sdt); updateThemePFX(sdt); updateTraffic(sdt);
     if(moon && currentTheme){ const o=currentTheme.sunPos;
       const fp=(state==='carselect'&&previewCar)?previewCar.position:(player?player.pos:null);
       if(fp){ moon.target.position.copy(fp); moon.position.set(fp.x+o[0], o[1], fp.z+o[2]); } }
