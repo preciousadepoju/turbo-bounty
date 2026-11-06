@@ -918,6 +918,7 @@ function buildTrack(){
 
   // (sky, scenery, lights & fog are applied per-theme via applyTheme)
   buildTraffic();
+  buildProps();
   computeMiniPts();
 }
 function edgeWall(samples,offset,color){
@@ -1231,6 +1232,36 @@ function updateTraffic(dt){
     } }
   }
   trafficMesh.instanceMatrix.needsUpdate=true;
+}
+/* ---- Destructible roadside props (InstancedMesh per type) ---- */
+const PROP_TYPES=[
+  {geo:()=>new THREE.ConeGeometry(0.5,1.3,8), mat:{color:0xff7a1a,roughness:0.6}, y:0.65, r:1.5, debris:0xff7a1a},
+  {geo:()=>new THREE.BoxGeometry(1.2,1.2,1.2), mat:{color:0x7a5230,roughness:0.85}, y:0.6, r:1.6, debris:0x7a5230},
+  {geo:()=>new THREE.BoxGeometry(0.7,1,2.6), mat:{color:0xd63030,roughness:0.6}, y:0.5, r:1.7, debris:0xd63030},
+];
+let props=[], propMeshes={};
+function setPropMatrix(p,alive){ if(alive){ _e.set(0,p.yaw,0); _q.setFromEuler(_e); _sc.set(1,1,1); }
+  else { _q.identity(); _sc.set(0,0,0); } _m.compose(p.pos,_q,_sc); p.mesh.setMatrixAt(p.inst,_m); }
+function buildProps(){
+  const N=samples.length, byType=[[],[],[]];
+  for(let i=6;i<N;i+=9){ const s=samples[i], sgn=(i%2===0)?1:-1, off=(CFG.ROAD_HALF-5+Math.random()*2)*sgn, t=(Math.random()*3)|0;
+    byType[t].push({pos:s.p.clone().addScaledVector(s.side,off).setY(PROP_TYPES[t].y), yaw:Math.atan2(s.t.x,s.t.z), alive:true, respawnT:0, type:t}); }
+  propMeshes={}; props=[];
+  PROP_TYPES.forEach((T,t)=>{ const list=byType[t]; if(!list.length) return;
+    const mesh=new THREE.InstancedMesh(T.geo(), new THREE.MeshStandardMaterial(T.mat), list.length); mesh.userData.dirty=false; scene.add(mesh);
+    list.forEach((p,i)=>{ p.mesh=mesh; p.inst=i; setPropMatrix(p,true); props.push(p); });
+    mesh.instanceMatrix.needsUpdate=true; propMeshes[t]=mesh; });
+}
+function resetProps(){ for(const p of props){ p.alive=true; p.respawnT=0; setPropMatrix(p,true); if(p.mesh) p.mesh.userData.dirty=true; } }
+function updateProps(dt){
+  if(!props.length) return;
+  for(const p of props){ if(!p.alive){ p.respawnT-=dt; if(p.respawnT<=0){ p.alive=true; setPropMatrix(p,true); p.mesh.userData.dirty=true; } } }
+  if(state==='playing'){ for(const c of cars){ if(c.mode!=='racing') continue;
+    for(const p of props){ if(!p.alive) continue; const R=PROP_TYPES[p.type].r;
+      if(c.pos.distanceToSquared(p.pos) < R*R){ p.alive=false; p.respawnT=6; setPropMatrix(p,false); p.mesh.userData.dirty=true;
+        fx.debris(p.pos.clone().setY(1),PROP_TYPES[p.type].debris); fx.smoke(p.pos.clone().setY(0.8),0xb0b0b0,2,true);
+        if(c.isPlayer){ sfx.hit(); camShakeAdd(0.15); c.points+=10; } } } } }
+  for(const t in propMeshes){ const m=propMeshes[t]; if(m.userData.dirty){ m.instanceMatrix.needsUpdate=true; m.userData.dirty=false; } }
 }
 function resetWeatherVisuals(){
   weather.rain=0; weather.tgtRain=0; weather.tod=0; weatherGrip=1; rainAnnounced=false;
@@ -2024,7 +2055,7 @@ function startCountdown(){
     if(n>0){ popCount(n); tone(440,0.15,'square',0.2); }
     else if(n===0){ popCount('GO!'); tone(880,0.4,'square',0.25); }
     else { clearInterval(iv); cd.classList.add('hidden'); state='playing'; raceStartClock=performance.now(); lapStartTime=raceStartClock; lastLapTime=0; prevLeaderIsPlayer=false;
-      weather.rain=0; weather.tgtRain=0; weather.tod=0; weatherGrip=1; willRain=Math.random()<0.35; rainAtFrac=rand(0.3,0.6); rainAnnounced=false; resetTraffic();
+      weather.rain=0; weather.tgtRain=0; weather.tod=0; weatherGrip=1; willRain=Math.random()<0.35; rainAtFrac=rand(0.3,0.6); rainAnnounced=false; resetTraffic(); resetProps();
       // launch: engines bark and the camera kicks, but speed builds naturally (no instant boost)
       sfx.boost(); camShakeAdd(0.5); camera.fov=84; camera.updateProjectionMatrix();
     } },800);
@@ -2102,7 +2133,7 @@ function animate(){
     else if(state==='carselect'){ showroomCam(dt); }
     else if(state==='title'||state==='select'){ idleCam(dt); }
     fx && fx.update(sdt);
-    updateRain(sdt); updateLightning(sdt); updateThemePFX(sdt); updateTraffic(sdt);
+    updateRain(sdt); updateLightning(sdt); updateThemePFX(sdt); updateTraffic(sdt); updateProps(sdt);
     if(moon && currentTheme){ const o=currentTheme.sunPos;
       const fp=(state==='carselect'&&previewCar)?previewCar.position:(player?player.pos:null);
       if(fp){ moon.target.position.copy(fp); moon.position.set(fp.x+o[0], o[1], fp.z+o[2]); } }
