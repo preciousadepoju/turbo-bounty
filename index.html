@@ -415,7 +415,7 @@ const QUALITY = {
   rain: 0,
   post: true,            // bloom + FXAA + grain (set false if still heavy)
   envMap: true,          // reflections on cars / wet road
-  pixelRatioCap: 1.3,    // hard ceiling; adaptive perf lowers it further when needed
+  pixelRatioCap: 1.0,    // native-res render (big GPU headroom, kills frame spikes); raise to 1.3 for crisper
   adaptive: true,        // auto-lower resolution when the frame-rate dips
 };
 
@@ -427,6 +427,7 @@ const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
 const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 const UP = V3(0,1,0);
+const _s1=new THREE.Vector3(), _s2=new THREE.Vector3(); // reusable scratch (avoid per-frame allocations)
 
 let renderer, scene, camera, composer, bloomPass, fxaaPass, useBloom=false;
 let moon=null, envRT=null, rainSystem=null, lightningT=6, RoundedBox=null;
@@ -1770,17 +1771,14 @@ function updateRanking(dt){
    CAMERA
    ===================================================================== */
 function updateCamera(dt){
-  const target = player.mode==='dead'?player:player;
-  const back=target.forward().clone().multiplyScalar(-CFG.CAM_DIST);
-  const camPos=target.pos.clone().add(back).setY(target.y+CFG.CAM_HEIGHT);
-  camera.position.lerp(camPos,clamp(CFG.CAM_LERP*dt,0,1));
-  const look=target.pos.clone().add(target.forward().clone().multiplyScalar(8)).setY(target.y+2);
-  camera.lookAt(look);
-  // shake
+  const t=player; const fwdX=Math.sin(t.yaw), fwdZ=Math.cos(t.yaw);   // no allocations
+  _s1.set(t.pos.x - fwdX*CFG.CAM_DIST, t.y+CFG.CAM_HEIGHT, t.pos.z - fwdZ*CFG.CAM_DIST);
+  camera.position.lerp(_s1,clamp(CFG.CAM_LERP*dt,0,1));
+  _s2.set(t.pos.x + fwdX*8, t.y+2, t.pos.z + fwdZ*8);
+  camera.lookAt(_s2);
   if(camShake>0){ camera.position.x+=rand(-1,1)*camShake; camera.position.y+=rand(-1,1)*camShake; camera.position.z+=rand(-1,1)*camShake; camShake=Math.max(0,camShake-dt*3); }
-  // fov by speed
-  const spdRatio=clamp(target.speed/CFG.MAX_SPEED,0,1.2);
-  const targetFov=CFG.FOV_BASE+spdRatio*CFG.FOV_SPEED+(target.boostT>0?6:0);
+  const spdRatio=clamp(t.speed/CFG.MAX_SPEED,0,1.2);
+  const targetFov=CFG.FOV_BASE+spdRatio*CFG.FOV_SPEED+(t.boostT>0?6:0);
   camera.fov+=(targetFov-camera.fov)*clamp(5*dt,0,1); camera.updateProjectionMatrix();
 }
 function camShakeAdd(v){ camShake=Math.min(2.2,camShake+v); }
