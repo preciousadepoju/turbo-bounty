@@ -440,7 +440,9 @@ let fx;                        // FX manager
 let camShake=0, timeScale=1, slowmoT=0;
 let miniPts=[];               // precomputed minimap polyline
 let raceStartClock=0, lapStartTime=0, lastLapTime=0, bestLapTime=0, bestChamp=0, prevLeaderIsPlayer=false;
-function loadBests(){ try{ bestLapTime=parseFloat(localStorage.getItem('tb_bestLap'))||0; bestChamp=parseInt(localStorage.getItem('tb_bestChamp'))||0; }catch(e){} }
+function loadBests(){ try{ bestLapTime=parseFloat(localStorage.getItem('tb_bestLap'))||0; bestChamp=parseInt(localStorage.getItem('tb_bestChamp'))||0;
+  playerName=localStorage.getItem('tb_name')||''; }catch(e){}
+  if(playerName && el('nameInput')) el('nameInput').value=playerName; }
 function saveBestLap(t){ if(t>0 && (!bestLapTime || t<bestLapTime)){ bestLapTime=t; try{localStorage.setItem('tb_bestLap',t.toFixed(2));}catch(e){} return true; } return false; }
 function saveBestChamp(p){ if(p>bestChamp){ bestChamp=p; try{localStorage.setItem('tb_bestChamp',String(p));}catch(e){} } }
 function fmtTime(s){ s=Math.max(0,s); const m=Math.floor(s/60); const sec=(s%60).toFixed(2); return m>0?(m+':'+sec.padStart(5,'0')):(sec+'s'); }
@@ -1367,8 +1369,8 @@ class Car{
       latVec.multiplyScalar(Math.max(0,1-grip*dt));
       const spdFactor=clamp(Math.abs(fAmt)/18,0,1);
       const dirSign=fAmt>=0?1:-1;
-      // smooth the steering input so turns feel fluid, not twitchy
-      this.steerSmooth = lerp(this.steerSmooth||0, steer, clamp(9*dt,0,1));
+      // lightly smooth the steering input (snappy but not twitchy)
+      this.steerSmooth = lerp(this.steerSmooth||0, steer, clamp(20*dt,0,1));
       this.yaw+=this.steerSmooth*CFG.TURN_RATE*dt*spdFactor*dirSign*(handbrake?1.35:1);
       this._steer=this.steerSmooth;
       // ride the ramp surface; launch off the lip
@@ -2019,13 +2021,15 @@ function idleCam(dt){
    ===================================================================== */
 /* ---- Game modes & championship ---- */
 let gameMode='quick', champActive=false, champRound=0, champPoints=[0,0,0,0,0,0], aiDifficulty=0, raceLaps=3;
-function setNameFromInput(){ const v=((el('nameInput')&&el('nameInput').value)||'').trim().toUpperCase(); playerName=v||'YOU'; }
+function setNameFromInput(){ const v=((el('nameInput')&&el('nameInput').value)||'').trim().toUpperCase(); playerName=v||'YOU';
+  try{ localStorage.setItem('tb_name',playerName); }catch(e){} }
 function startCareer(){ initAudioOnce(); setNameFromInput(); gameMode='career'; champActive=true; champRound=0; champPoints=[0,0,0,0,0,0];
   el('title').classList.add('hidden'); openCarSelect(); }
 function startQuick(){ initAudioOnce(); setNameFromInput(); gameMode='quick'; champActive=false; aiDifficulty=0; openSelect(); }
 function startRound(r){ champRound=r; aiDifficulty=THEMES.length>1?r/(THEMES.length-1):0; applyTheme(THEMES[r]);
   el('results').classList.add('hidden'); startCountdown(); }
 function goTitle(){ state='title'; champActive=false; renderBests();
+  if(el('nameInput') && playerName && playerName!=='YOU') el('nameInput').value=playerName;  // keep the name — don't ask again
   el('results').classList.add('hidden'); el('hud').classList.add('hidden'); el('title').classList.remove('hidden'); }
 
 let selIndex=0, selectable=[];
