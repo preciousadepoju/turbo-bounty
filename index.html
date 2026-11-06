@@ -215,6 +215,7 @@
     color:#9fb6e8;font-weight:bold;white-space:nowrap;pointer-events:none;}
   #count{font-size:clamp(90px,26vw,260px);font-weight:900;color:#fff;
     filter:drop-shadow(0 0 40px var(--neon-cyan));}
+  .res-btns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;}
   #results h2{font-size:clamp(30px,6vw,56px);font-weight:900;letter-spacing:3px;color:var(--neon-gold);
     filter:drop-shadow(0 0 18px var(--neon-gold));}
   #resTable{margin-top:22px;font-size:clamp(14px,2.2vw,20px);border-collapse:collapse;min-width:min(560px,92vw);}
@@ -340,7 +341,10 @@
   <h2 id="resTitle">RACE OVER</h2>
   <table id="resTable"></table>
   <div id="resNote" class="small-note"></div>
-  <button id="restartBtn" class="btn">RACE AGAIN</button>
+  <div class="res-btns">
+    <button id="restartBtn" class="btn">RACE AGAIN</button>
+    <button id="homeBtn" class="btn mag">HOME</button>
+  </div>
 </div>
 
 <div id="loadErr">Failed to load Three.js from the CDN.<br>Check your internet connection and reload.</div>
@@ -2114,6 +2118,7 @@ function wireButtons(){
   el('resumeBtn').onclick=()=>togglePause();
   el('quitBtn').onclick=()=>{ goTitle(); el('pause').classList.add('hidden'); };
   el('restartBtn').onclick=()=>{ resultsAction(); };
+  el('homeBtn').onclick=()=>{ goTitle(); };
   el('csPrev').onclick=()=>csMove(-1);
   el('csNext').onclick=()=>csMove(1);
   el('csRace').onclick=()=>csChoose();
