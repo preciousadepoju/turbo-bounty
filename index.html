@@ -269,6 +269,7 @@
 <div id="results" class="screen hidden">
   <h2 id="resTitle">RACE OVER</h2>
   <table id="resTable"></table>
+  <div id="resNote" class="small-note"></div>
   <button id="restartBtn" class="btn">RACE AGAIN</button>
 </div>
 
@@ -1704,7 +1705,7 @@ function updateHUD(){
   const r=player.rank; el('pos').innerHTML=r+'<small>'+(ord[r]||'th')+'</small>';
   el('lap').textContent='LAP '+clamp(player.lap+1,1,CFG.LAPS)+' / '+CFG.LAPS;
   el('bounty').innerHTML=Math.floor(player.bountyHold)+' <small>BOUNTY</small>';
-  el('score').textContent='SCORE '+player.points+' · KILLS '+player.kills;
+  el('score').textContent='SCORE '+(player.points+Math.floor(player.bountyHold))+' · KILLS '+player.kills;
   el('hpFill').style.width=clamp(player.hp/CFG.MAX_HP*100,0,100)+'%';
   el('heatFill').style.width=clamp(player.gunHeat*100,0,100)+'%';
   el('heatWrap').classList.toggle('overheat',player.overheated);
@@ -1782,6 +1783,7 @@ function togglePause(){
   if(state==='playing'){ state='paused'; el('pause').classList.remove('hidden'); if(engGain)engGain.gain.value=0; }
   else if(state==='paused'){ state='playing'; el('pause').classList.add('hidden'); }
 }
+const FINISH_PTS=[1200,800,550,400,300,200];  // points for 1st..6th place
 function endRace(){
   state='results'; el('results').classList.remove('hidden');
   const sorted=[...cars].sort((a,b)=> (b.lap - a.lap) || (b.progress-a.progress));
@@ -1789,9 +1791,15 @@ function endRace(){
   sorted.sort((a,b)=>{ if(a.finished&&b.finished) return a.finishTime-b.finishTime; if(a.finished)return -1; if(b.finished)return 1; return b.progress-a.progress; });
   const pr=sorted.findIndex(c=>c.isPlayer)+1;
   el('resTitle').textContent = pr===1?'🏆 YOU WON!':'RACE OVER — '+pr+(ord[pr]||'th')+' PLACE';
-  let html='<tr><th>#</th><th>Racer</th><th>Kills</th><th>Score</th></tr>';
-  sorted.forEach((c,i)=>{ html+=`<tr class="${c.isPlayer?'me-row':''}"><td>${i+1}</td><td style="color:${hex(c.color)}">${c.name}</td><td>${c.kills}</td><td>${c.points+Math.floor(c.bountyHold)}</td></tr>`; });
+  let html='<tr><th>#</th><th>Racer</th><th>Kills</th><th>Bounty</th><th>Finish</th><th>Total</th></tr>';
+  sorted.forEach((c,i)=>{
+    const fin=FINISH_PTS[i]||100, bounty=Math.floor(c.bountyHold), total=c.points+bounty+fin;
+    html+=`<tr class="${c.isPlayer?'me-row':''}"><td>${i+1}</td><td style="color:${hex(c.color)}">${c.name}</td>`+
+      `<td>${c.kills}</td><td>${bounty}</td><td>+${fin}</td><td><b>${total}</b></td></tr>`;
+  });
   el('resTable').innerHTML=html;
+  const note=el('resNote');
+  if(note) note.textContent='Score = kills (300 each) + bounty earned while leading + finish-place bonus.';
 }
 function applyTrailer(){
   if(TRAILER){ CFG._savedHP=CFG._savedHP||CFG.MAX_HP; cars.forEach(c=>{ c.hp=Math.max(c.hp,150); }); }
