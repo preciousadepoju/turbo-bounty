@@ -461,6 +461,7 @@ let replaySeq=0, replayEvents=[], replaySeqStart=0, replayEvIdx=0, replaySlowT=0
 
 let renderer, scene, camera, composer, bloomPass, fxaaPass, useBloom=false;
 let moon=null, envRT=null, rainSystem=null, lightningT=6, RoundedBox=null;
+let usingHDRI=false, roadPBR=false;   // real assets loaded (fall back to procedural if they fail)
 let hemi=null, amb=null, groundMesh=null, roadMat=null, sceneryGroup=null, skyGroup=null, themePFX=null, currentTheme=null;
 let clock;
 let state='title';            // title|countdown|playing|paused|results
@@ -658,7 +659,7 @@ function initRenderer(){
   renderer.setPixelRatio(Math.min(devicePixelRatio,QUALITY.pixelRatioCap));
   renderer.setSize(innerWidth,innerHeight);
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure=0.98;
+  renderer.toneMappingExposure=0.85;   // tuned down so HDRI/garage isn't overexposed
   if(QUALITY.shadows){ renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; }
   document.getElementById('app').appendChild(renderer.domElement);
 
@@ -696,7 +697,7 @@ async function initBloom(){
     const {OutputPass}=await import('three/addons/postprocessing/OutputPass.js');
     composer=new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene,camera));
-    bloomPass=new UnrealBloomPass(new THREE.Vector2(innerWidth*0.5,innerHeight*0.5),0.6,0.4,0.72);
+    bloomPass=new UnrealBloomPass(new THREE.Vector2(innerWidth*0.5,innerHeight*0.5),0.32,0.4,0.85);  // only real lights glow
     composer.addPass(bloomPass);
     try{
       const {ShaderPass}=await import('three/addons/postprocessing/ShaderPass.js');
@@ -722,13 +723,40 @@ function setBloomRes(){ if(bloomPass){ const pr=renderer.getPixelRatio();
   bloomPass.setSize(Math.max(1,innerWidth*pr*0.5), Math.max(1,innerHeight*pr*0.5)); } }
 async function initEnvironment(){
   if(!QUALITY.envMap) return;
+  // Try a real CC0 HDRI for sky + image-based lighting; fall back to a neutral room env.
   try{
-    const {RoomEnvironment}=await import('three/addons/environments/RoomEnvironment.js');
-    const pmrem=new THREE.PMREMGenerator(renderer);
-    envRT=pmrem.fromScene(new RoomEnvironment(),0.04);
-    scene.environment=envRT.texture;
+    const {RGBELoader}=await import('three/addons/loaders/RGBELoader.js');
+    const hdr=await new Promise((res,rej)=> new RGBELoader().load('assets/env/evening_road_01_1k.hdr',res,undefined,rej));
+    hdr.mapping=THREE.EquirectangularReflectionMapping;
+    const pmrem=new THREE.PMREMGenerator(renderer); pmrem.compileEquirectangularShader();
+    envRT=pmrem.fromEquirectangular(hdr); scene.environment=envRT.texture;
+    scene.background=hdr;                 // real sky
+    usingHDRI=true; if(skyGroup) skyGroup.visible=false;
     pmrem.dispose();
-  }catch(e){ console.warn('Env map unavailable',e); }
+    console.log('[TURBO BOUNTY] HDRI sky loaded');
+  }catch(e){ console.warn('HDRI unavailable, using neutral env + procedural sky',e);
+    try{ const {RoomEnvironment}=await import('three/addons/environments/RoomEnvironment.js');
+      const pm=new THREE.PMREMGenerator(renderer); envRT=pm.fromScene(new RoomEnvironment(),0.04); scene.environment=envRT.texture; pm.dispose(); }catch(_){}
+  }
+}
+async function loadRoadTextures(){
+  try{
+    const tl=new THREE.TextureLoader(); const load=u=>new Promise((res,rej)=>tl.load(u,res,undefined,rej));
+    const [diff,nor,arm]=await Promise.all([
+      load('assets/env/asphalt_02_diff_1k.jpg'), load('assets/env/asphalt_02_nor_1k.jpg'), load('assets/env/asphalt_02_arm_1k.jpg')]);
+    for(const t of [diff,nor,arm]){ t.wrapS=t.wrapT=THREE.RepeatWrapping; t.anisotropy=4; t.repeat.set(2.5,1); }
+    diff.colorSpace=THREE.SRGBColorSpace;
+    if(roadMat){ roadMat.map=diff; roadMat.normalMap=nor; roadMat.roughnessMap=arm; roadMat.metalnessMap=arm;
+      roadMat.color.set(0xffffff); roadMat.roughness=1; roadMat.metalness=0.9; roadMat.envMapIntensity=1.0; roadMat.needsUpdate=true; roadPBR=true; }
+    // concrete on the ground plane
+    try{ const [cd,cn,ca]=await Promise.all([
+        load('assets/env/concrete_diff_1k.jpg'), load('assets/env/concrete_nor_1k.jpg'), load('assets/env/concrete_arm_1k.jpg')]);
+      for(const t of [cd,cn,ca]){ t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(220,220); t.anisotropy=4; }
+      cd.colorSpace=THREE.SRGBColorSpace;
+      if(groundMesh){ const m=groundMesh.material; m.map=cd; m.normalMap=cn; m.roughnessMap=ca; m.color.set(0x3a3a3e); m.roughness=1; m.needsUpdate=true; }
+    }catch(_){}
+    console.log('[TURBO BOUNTY] asphalt + concrete PBR loaded');
+  }catch(e){ console.warn('road textures unavailable, keeping procedural',e); }
 }
 
 /* =====================================================================
@@ -1066,16 +1094,16 @@ function prewarmThemes(){ // build every location in the background so switching
 }
 function applyTheme(theme){
   currentTheme=theme;
-  scene.background.set(theme.bg);
+  if(!usingHDRI && scene.background && scene.background.isColor) scene.background.set(theme.bg);
   scene.fog.color.set(theme.fog); scene.fog.density=theme.fogD;
   hemi.color.set(theme.hemiSky); hemi.groundColor.set(theme.hemiGround); hemi.intensity=theme.hemiI;
   amb.color.set(theme.ambC); amb.intensity=theme.ambI;
   moon.color.set(theme.sun); moon.intensity=theme.sunI;
-  if(groundMesh){ groundMesh.material.color.set(theme.ground); groundMesh.material.roughness=theme.groundRough; }
-  if(roadMat){ roadMat.color.set(theme.road); roadMat.roughness=theme.roadRough; }
+  if(groundMesh && !roadPBR){ groundMesh.material.color.set(theme.ground); groundMesh.material.roughness=theme.groundRough; }
+  if(roadMat && !roadPBR){ roadMat.color.set(theme.road); roadMat.roughness=theme.roadRough; }
   for(const k in themeCache){ themeCache[k].sky.visible=false; themeCache[k].scn.visible=false; }
   const w=ensureThemeWorld(theme);
-  w.sky.visible=true; w.scn.visible=true; skyGroup=w.sky; sceneryGroup=w.scn;
+  w.sky.visible=!usingHDRI; w.scn.visible=true; skyGroup=w.sky; sceneryGroup=w.scn;
   if(themePFX){ scene.remove(themePFX.points); themePFX.points.geometry.dispose(); themePFX.points.material.dispose(); themePFX=null; }
   if(theme.pfx) themePFX=buildThemePFX(theme.pfx);
   resetWeatherVisuals();
@@ -1226,9 +1254,9 @@ function updateWeather(dt){
   if(moon) moon.intensity=currentTheme.sunI*lf;
   if(scene.fog){ scene.fog.density=currentTheme.fogD*(1+0.5*rn+0.25*tod);
     _col.setHex(currentTheme.fog); _col2.setHex(0x05060f); scene.fog.color.copy(_col).lerp(_col2, clamp(0.5*tod+0.35*rn,0,1)); }
-  if(skyGroup && skyGroup.children[0] && skyGroup.children[0].material){ const d=clamp(0.5*tod+0.3*rn,0,0.75);
+  if(!usingHDRI && skyGroup && skyGroup.children[0] && skyGroup.children[0].material){ const d=clamp(0.5*tod+0.3*rn,0,0.75);
     skyGroup.children[0].material.color.setRGB(1-d,1-d,1-d*0.85); }
-  if(roadMat) roadMat.roughness=currentTheme.roadRough*(1-0.55*rn);   // wet = reflective
+  if(roadMat) roadMat.roughness=(roadPBR?1:currentTheme.roadRough)*(1-0.55*rn);   // wet = reflective
   weatherGrip = 1 - 0.28*rn;                                          // slippery in the rain
   if(rainSystem){ rainSystem.points.visible=rn>0.03; rainSystem.points.material.opacity=rn*0.5; }
 }
@@ -1305,7 +1333,7 @@ function resetWeatherVisuals(){
   if(!currentTheme) return;
   if(hemi) hemi.intensity=currentTheme.hemiI; if(amb) amb.intensity=currentTheme.ambI; if(moon) moon.intensity=currentTheme.sunI;
   if(scene.fog){ scene.fog.density=currentTheme.fogD; scene.fog.color.set(currentTheme.fog); }
-  if(roadMat) roadMat.roughness=currentTheme.roadRough;
+  if(roadMat && !roadPBR) roadMat.roughness=currentTheme.roadRough;
   if(skyGroup && skyGroup.children[0] && skyGroup.children[0].material) skyGroup.children[0].material.color.setRGB(1,1,1);
   if(rainSystem) rainSystem.points.visible=false;
 }
@@ -2441,6 +2469,7 @@ async function boot(){
   }catch(e){ showFatal(e); return; }
   // ---- EYE-CANDY: load after the game is already running; failures must not block it ----
   try{ await initEnvironment(); }catch(e){ console.warn('env failed',e); }
+  try{ await loadRoadTextures(); }catch(e){ console.warn('road tex failed',e); }
   try{ await initBloom(); }catch(e){ console.warn('post failed',e); useBloom=false; }
   prewarmThemes();   // pre-build every location so track/car select never hitches
 }
