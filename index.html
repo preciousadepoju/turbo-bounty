@@ -1901,8 +1901,13 @@ function showFatal(e){
     (e&&e.message?e.message:e)+'</span><br><br><span style="opacity:.6;font-size:13px;">Reload with Ctrl+F5. If it persists, tell Claude this message.</span>'; }
   console.error('FATAL', e);
 }
-// surface any uncaught error on screen (so we can diagnose without the console)
-addEventListener('error', ev=>{ if(state==='title') showFatal(ev.error||ev.message); });
+// surface a genuine game error on screen — but IGNORE noise from browser extensions
+// (crypto wallets injecting window.ethereum, etc.) which are not our code.
+addEventListener('error', ev=>{
+  if(ev.filename && location.origin!=='null' && !ev.filename.startsWith(location.origin)) return; // other origin (extension)
+  if(ev.message && /ethereum|redefine property|evmAsk|web3|metamask|phantom|solana/i.test(ev.message)) return;
+  if(state==='title') showFatal(ev.error||ev.message);
+});
 addEventListener('unhandledrejection', ev=>{ console.error('unhandled', ev.reason); });
 
 function wireButtons(){
