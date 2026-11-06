@@ -29,8 +29,14 @@
   #lapPips{display:flex;gap:5px;margin-top:5px;}
   #lapPips span{width:22px;height:5px;border-radius:3px;background:rgba(255,255,255,.22);transition:background .2s;}
   #lapPips span.on{background:var(--neon-cyan);box-shadow:0 0 9px var(--neon-cyan);}
+  #timer{font-family:'Teko',sans-serif;font-size:26px;line-height:1;margin-top:7px;color:#fff;letter-spacing:1px;text-shadow:0 0 10px rgba(23,230,255,.5);}
+  #lapTime{font-size:13px;color:#9fd0ff;margin-top:2px;min-height:15px;letter-spacing:.5px;}
   #topRight{top:14px;right:16px;text-align:right;}
-  #bounty{font-size:30px;color:var(--neon-gold);text-shadow:0 0 16px var(--neon-gold);}
+  #bounty{font-size:30px;color:var(--neon-gold);text-shadow:0 0 16px var(--neon-gold);position:relative;}
+  #bounty.target{animation:targetpulse 1s ease-in-out infinite;}
+  #bounty.target::after{content:"TARGET";position:absolute;right:0;top:-15px;font-size:11px;letter-spacing:2px;
+    color:#ff5a5a;text-shadow:0 0 10px rgba(255,40,40,.8);}
+  @keyframes targetpulse{50%{text-shadow:0 0 28px var(--neon-gold),0 0 40px rgba(255,90,90,.6);}}
   #bounty small{font-size:13px;opacity:.8;}
   #score{font-size:16px;margin-top:3px;color:#ffe9a8;}
   #bars{position:absolute;left:16px;bottom:18px;width:260px;}
@@ -142,6 +148,8 @@
   #nameInput::placeholder{color:rgba(255,255,255,.4);letter-spacing:2px;}
   .tb-modes{margin-top:22px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center;}
   .tb-modes .btn{margin-top:0;font-size:clamp(18px,3.2vw,24px);padding:13px 34px;}
+  #bests{margin-top:16px;font-size:13px;letter-spacing:1.5px;color:var(--neon-gold);min-height:16px;
+    text-shadow:0 0 12px rgba(255,207,58,.4);pointer-events:none;}
   .tb-hint{margin-top:14px;font-size:13px;letter-spacing:3px;color:#9fb6e8;font-weight:bold;pointer-events:none;
     animation:blinkhint 1.3s steps(2,end) infinite;}
   .btn:active{transform:scale(0.96);}
@@ -249,6 +257,8 @@
     <div id="pos">1<small>st</small></div>
     <div id="lap">LAP 1 / 3</div>
     <div id="lapPips"></div>
+    <div id="timer">0.00s</div>
+    <div id="lapTime"></div>
   </div>
   <div id="topRight" class="panel">
     <div id="bounty">0 <small>BOUNTY</small></div>
@@ -286,6 +296,7 @@
       <button id="quickBtn" class="btn mag">QUICK RACE</button>
     </div>
     <div class="tb-hint">CAREER · 5 LOCATIONS · 5 ROUNDS · BECOME CHAMPION</div>
+    <div id="bests"></div>
   </div>
   <div id="ctrlbar">
     <span class="grp"><kbd>WASD</kbd><span class="slash">/</span><kbd class="arrows">↑↓←→</kbd> Drive</span>
@@ -424,7 +435,14 @@ let bullets=[], rockets=[], mines=[], pickups=[];
 let fx;                        // FX manager
 let camShake=0, timeScale=1, slowmoT=0;
 let miniPts=[];               // precomputed minimap polyline
-let raceStartClock=0;
+let raceStartClock=0, lapStartTime=0, lastLapTime=0, bestLapTime=0, bestChamp=0, prevLeaderIsPlayer=false;
+function loadBests(){ try{ bestLapTime=parseFloat(localStorage.getItem('tb_bestLap'))||0; bestChamp=parseInt(localStorage.getItem('tb_bestChamp'))||0; }catch(e){} }
+function saveBestLap(t){ if(t>0 && (!bestLapTime || t<bestLapTime)){ bestLapTime=t; try{localStorage.setItem('tb_bestLap',t.toFixed(2));}catch(e){} return true; } return false; }
+function saveBestChamp(p){ if(p>bestChamp){ bestChamp=p; try{localStorage.setItem('tb_bestChamp',String(p));}catch(e){} } }
+function fmtTime(s){ s=Math.max(0,s); const m=Math.floor(s/60); const sec=(s%60).toFixed(2); return m>0?(m+':'+sec.padStart(5,'0')):(sec+'s'); }
+function renderBests(){ const b=el('bests'); if(!b) return;
+  const parts=[]; if(bestLapTime>0) parts.push('BEST LAP '+fmtTime(bestLapTime)); if(bestChamp>0) parts.push('BEST CHAMPIONSHIP '+bestChamp+' pts');
+  b.textContent=parts.join('  ·  '); }
 
 /* =====================================================================
    INPUT
@@ -1290,7 +1308,7 @@ class Car{
     const cone=new THREE.Mesh(new THREE.ConeGeometry(1.6,1.4,5),cm); this.crown.add(cone);
     for(let i=0;i<5;i++){ const sp=new THREE.Mesh(new THREE.SphereGeometry(0.35,6,6),cm);
       const a=i/5*Math.PI*2; sp.position.set(Math.cos(a)*1.5,0.9,Math.sin(a)*1.5); this.crown.add(sp); }
-    this.crown.position.y=8.5; this.crown.visible=false; this.mesh.add(this.crown);
+    this.crown.position.y=8.5; this.crown.scale.setScalar(1.5); this.crown.visible=false; this.mesh.add(this.crown);
     // shield bubble
     this.shieldMesh=new THREE.Mesh(new THREE.SphereGeometry(4.5,16,16),
       new THREE.MeshBasicMaterial({color:0x5dff8f,transparent:true,opacity:0.22,blending:THREE.AdditiveBlending,depthWrite:false}));
@@ -1419,7 +1437,10 @@ class Car{
     this.prevIdx=this.sampleIdx; this.sampleIdx=best;
     const N=samples.length;
     // lap crossing
-    if(this.prevIdx>N*0.75 && best<N*0.25){ this.lap++; if(this.isPlayer) sfx.pickup();
+    if(this.prevIdx>N*0.75 && best<N*0.25){ this.lap++;
+      if(this.isPlayer){ sfx.pickup();
+        const now=performance.now(), t=(now-lapStartTime)/1000; lapStartTime=now; lastLapTime=t;
+        if(saveBestLap(t)){ banner('FASTEST LAP! '+fmtTime(t),'#5dff8f'); } }
       if(this.lap>=raceLaps){ this.finishRace(); } }
     else if(this.prevIdx<N*0.25 && best>N*0.75){ this.lap=Math.max(0,this.lap-1); }
     // checkpoint capture (for respawn) — nearest passed cp
@@ -1730,7 +1751,12 @@ function updateRanking(dt){
   cars.forEach(c=>{ c.crown.visible=(c===leader && c.mode==='racing');
     c.mesh.userData.glow.material.color.setHex(c===leader?0xffcf3a:(c.mode==='dead'?0x5dff8f:c.color));
   });
-  if(leader.mode==='racing'){ leader.bountyHold+=CFG.BOUNTY_RATE*dt; }
+  if(leader.mode==='racing'){ leader.bountyHold+=CFG.BOUNTY_RATE*dt;
+    // announce when the PLAYER takes the lead — "you're the target"
+    const pl=(leader===player);
+    if(pl && !prevLeaderIsPlayer){ banner("YOU'RE THE TARGET!",'#ffcf3a'); feed('<b style="color:#ffcf3a">You lead — everyone\'s hunting you. Bounty is climbing.</b>'); sfx.boost(); }
+    prevLeaderIsPlayer=pl;
+  }
 }
 
 /* =====================================================================
@@ -1791,6 +1817,11 @@ function updateHUD(){
   el('heatFill').style.width=clamp(player.gunHeat*100,0,100)+'%';
   el('heatWrap').classList.toggle('overheat',player.overheated);
   el('kmh').innerHTML=Math.round(player.speed*3.0)+'<small> km/h</small>';
+  // race timer + last lap
+  el('timer').textContent=fmtTime((performance.now()-raceStartClock)/1000);
+  el('lapTime').textContent = lastLapTime ? ('LAST '+fmtTime(lastLapTime)+(lastLapTime<=bestLapTime?' ★':'')) : '';
+  // bounty leader = target warning
+  el('bounty').classList.toggle('target', player.rank===1 && player.mode==='racing');
   drawMini();
 }
 function updateItemHUD(){}  // items removed
@@ -1858,7 +1889,7 @@ function startCountdown(){
   const iv=setInterval(()=>{ n--;
     if(n>0){ popCount(n); tone(440,0.15,'square',0.2); }
     else if(n===0){ popCount('GO!'); tone(880,0.4,'square',0.25); }
-    else { clearInterval(iv); cd.classList.add('hidden'); state='playing'; raceStartClock=performance.now();
+    else { clearInterval(iv); cd.classList.add('hidden'); state='playing'; raceStartClock=performance.now(); lapStartTime=raceStartClock; lastLapTime=0; prevLeaderIsPlayer=false;
       // launch: engines bark and the camera kicks, but speed builds naturally (no instant boost)
       sfx.boost(); camShakeAdd(0.5); camera.fov=84; camera.updateProjectionMatrix();
     } },800);
@@ -1881,6 +1912,8 @@ function endRace(){
   const sorted=raceOrder();
   const pr=sorted.findIndex(c=>c.isPlayer)+1;
   sorted.forEach((c,i)=>{ c.lastRacePts = FINISH_PTS[i]||100; });
+  const raceTime=((player.finishTime||performance.now())-raceStartClock)/1000;
+  const timeStr=' · Your time '+fmtTime(raceTime)+(bestLapTime>0?' · Best lap '+fmtTime(bestLapTime):'');
   const note=el('resNote'), btn=el('restartBtn');
   if(champActive){
     sorted.forEach((c,i)=>{ champPoints[c.idx]+=(CHAMP_PTS[i]||5); });
@@ -1893,12 +1926,13 @@ function endRace(){
     if(last){
       const champ=standings[0];
       el('resTitle').textContent = champ.isPlayer?'🏆 YOU ARE THE CHAMPION!':'CHAMPION — '+champ.name;
-      if(note) note.textContent='Final standings after '+THEMES.length+' rounds. You finished '+pr+(ord[pr]||'th')+' this round.';
+      saveBestChamp(champPoints[player.idx]); renderBests();
+      if(note) note.textContent='Final standings after '+THEMES.length+' rounds. You finished '+pr+(ord[pr]||'th')+' this round.'+timeStr;
       btn.textContent='PLAY AGAIN';
       resultsAction=()=>{ goTitle(); };
     } else {
       el('resTitle').textContent='ROUND '+(champRound+1)+' / '+THEMES.length+' — '+THEMES[champRound].name+' · YOU: '+pr+(ord[pr]||'th');
-      if(note) note.textContent='Championship points: 1st 25 · 2nd 18 · 3rd 15 · 4th 12 · 5th 10 · 6th 8';
+      if(note) note.textContent='Points: 1st 25 · 2nd 18 · 3rd 15 · 4th 12 · 5th 10 · 6th 8'+timeStr;
       btn.textContent='NEXT ROUND ▶';
       resultsAction=()=>{ startRound(champRound+1); };
     }
@@ -1909,7 +1943,7 @@ function endRace(){
       html+=`<tr class="${c.isPlayer?'me-row':''}"><td>${i+1}</td><td style="color:${hex(c.color)}">${c.name}</td>`+
         `<td>${c.kills}</td><td>${bounty}</td><td>+${fin}</td><td><b>${total}</b></td></tr>`; });
     el('resTable').innerHTML=html;
-    if(note) note.textContent='Score = kills (300 each) + bounty while leading + finish bonus.';
+    if(note) note.textContent='Score = kills + bounty + finish bonus.'+timeStr;
     btn.textContent='RACE AGAIN';
     resultsAction=()=>{ el('results').classList.add('hidden'); startCountdown(); };
   }
@@ -1984,7 +2018,7 @@ function startCareer(){ initAudioOnce(); setNameFromInput(); gameMode='career'; 
 function startQuick(){ initAudioOnce(); setNameFromInput(); gameMode='quick'; champActive=false; aiDifficulty=0; openSelect(); }
 function startRound(r){ champRound=r; aiDifficulty=THEMES.length>1?r/(THEMES.length-1):0; applyTheme(THEMES[r]);
   el('results').classList.add('hidden'); startCountdown(); }
-function goTitle(){ state='title'; champActive=false;
+function goTitle(){ state='title'; champActive=false; renderBests();
   el('results').classList.add('hidden'); el('hud').classList.add('hidden'); el('title').classList.remove('hidden'); }
 
 let selIndex=0, selectable=[];
@@ -2100,6 +2134,7 @@ async function boot(){
     setupControls();
     buildTrackSelect();
     wireButtons();
+    loadBests(); renderBests();
     animate();
   }catch(e){ showFatal(e); return; }
   // ---- EYE-CANDY: load after the game is already running; failures must not block it ----
