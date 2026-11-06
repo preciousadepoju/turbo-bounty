@@ -347,11 +347,11 @@ const CFG = {
   GRAVITY: 95,
   JUMP_V: 34,             // ramp launch velocity
   // combat
-  GUN_DPS_SHOT: 6,        // damage per bullet
-  GUN_RATE: 0.085,        // seconds between shots
-  BULLET_SPEED: 220,
+  GUN_DPS_SHOT: 12,       // damage per bullet (higher = kills faster)
+  GUN_RATE: 0.08,         // seconds between shots
+  BULLET_SPEED: 240,
   BULLET_LIFE: 0.9,
-  HEAT_PER_SHOT: 0.055,
+  HEAT_PER_SHOT: 0.05,
   HEAT_COOL: 0.42,        // per second
   MAX_HP: 100,
   ROCKET_DMG: 55, ROCKET_BLAST: 16,
@@ -1624,10 +1624,20 @@ function makeFX(){
   const smokePool=[],debrisPool=[],ringPool=[],ballPool=[],muzzlePool=[],sparkPool=[];
   const skidMarks=[]; let skidIdx=0; const MAX_SKID=160;
   const smokeMat=()=>new THREE.SpriteMaterial({map:TEX_SMOKE,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
-  function getSmoke(){ let s=smokePool.find(x=>!x.active); if(!s){ s={active:false,sp:new THREE.Sprite(smokeMat())}; s.sp.visible=false; scene.add(s.sp); smokePool.push(s);} return s; }
-  function getDebris(){ let d=debrisPool.find(x=>!x.active); if(!d){ d={active:false,mesh:new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:0xffffff,emissive:0x222222}))}; d.mesh.visible=false; scene.add(d.mesh); debrisPool.push(d);} return d; }
-  function getRing(){ let r=ringPool.find(x=>!x.active); if(!r){ r={active:false,mesh:new THREE.Mesh(new THREE.RingGeometry(1,1.4,32),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}))}; r.mesh.rotation.x=-Math.PI/2; r.mesh.visible=false; scene.add(r.mesh); ringPool.push(r);} return r; }
-  function getBall(){ let b=ballPool.find(x=>!x.active); if(!b){ b={active:false,sp:new THREE.Sprite(new THREE.SpriteMaterial({map:TEX_GLOW,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}))}; b.sp.visible=false; scene.add(b.sp); ballPool.push(b);} return b; }
+  // capped pools — when full, recycle the oldest instead of growing forever (prevents progressive lag)
+  const MAX_SMOKE=130,MAX_DEBRIS=60,MAX_RING=16,MAX_BALL=80; let smokeIdx=0,debrisIdx=0,ringIdx=0,ballIdx=0;
+  function getSmoke(){ let s=smokePool.find(x=>!x.active);
+    if(!s){ if(smokePool.length>=MAX_SMOKE){ s=smokePool[smokeIdx]; smokeIdx=(smokeIdx+1)%smokePool.length; }
+      else { s={active:false,sp:new THREE.Sprite(smokeMat())}; s.sp.visible=false; scene.add(s.sp); smokePool.push(s); } } return s; }
+  function getDebris(){ let d=debrisPool.find(x=>!x.active);
+    if(!d){ if(debrisPool.length>=MAX_DEBRIS){ d=debrisPool[debrisIdx]; debrisIdx=(debrisIdx+1)%debrisPool.length; }
+      else { d={active:false,mesh:new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:0xffffff,emissive:0x222222}))}; d.mesh.visible=false; scene.add(d.mesh); debrisPool.push(d); } } return d; }
+  function getRing(){ let r=ringPool.find(x=>!x.active);
+    if(!r){ if(ringPool.length>=MAX_RING){ r=ringPool[ringIdx]; ringIdx=(ringIdx+1)%ringPool.length; }
+      else { r={active:false,mesh:new THREE.Mesh(new THREE.RingGeometry(1,1.4,32),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}))}; r.mesh.rotation.x=-Math.PI/2; r.mesh.visible=false; scene.add(r.mesh); ringPool.push(r); } } return r; }
+  function getBall(){ let b=ballPool.find(x=>!x.active);
+    if(!b){ if(ballPool.length>=MAX_BALL){ b=ballPool[ballIdx]; ballIdx=(ballIdx+1)%ballPool.length; }
+      else { b={active:false,sp:new THREE.Sprite(new THREE.SpriteMaterial({map:TEX_GLOW,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}))}; b.sp.visible=false; scene.add(b.sp); ballPool.push(b); } } return b; }
   function getSpark(){ return getBall(); }
   return {
     smoke(pos,color,size,fast){ const s=getSmoke(); s.active=true; s.sp.visible=true; s.sp.position.copy(pos);
