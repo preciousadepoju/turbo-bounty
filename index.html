@@ -381,7 +381,7 @@ const CFG = {
   BOUNTY_RATE: 40,        // bounty points/sec while leading
   BOUNTY_BASE: 300,       // bonus for a kill
   // feel
-  CAM_DIST: 17, CAM_HEIGHT: 7, CAM_LERP: 4.5,
+  CAM_DIST: 17, CAM_HEIGHT: 7, CAM_LERP: 6.5,
   FOV_BASE: 72, FOV_SPEED: 16,
   // trailer mode overrides applied in applyTrailer()
 };
@@ -389,13 +389,13 @@ let TRAILER = false;
 
 /* Visual quality — lower these first if the frame-rate drops (see notes at end) */
 const QUALITY = {
-  shadows: true,         // soft moon shadows under cars  (biggest cost — turn off first)
-  shadowMapSize: 1024,   // texels per side; 2048 = sharper but heavier
-  rain: 0,              // rain streak count (0 = off)
-  post: true,            // bloom + FXAA + grain
+  shadows: false,        // real-time shadows OFF for speed (cars use cheap blob shadows instead)
+  shadowMapSize: 1024,
+  rain: 0,
+  post: true,            // bloom + FXAA + grain (set false if still heavy)
   envMap: true,          // reflections on cars / wet road
-  pixelRatioCap: 1.35,   // hard ceiling; adaptive perf lowers it further when needed
-  adaptive: true,        // auto-lower resolution if the frame-rate dips (keeps it smooth)
+  pixelRatioCap: 1.3,    // hard ceiling; adaptive perf lowers it further when needed
+  adaptive: true,        // auto-lower resolution when the frame-rate dips
 };
 
 /* =====================================================================
@@ -671,7 +671,14 @@ function smokeTexture(){
   g.fillStyle=grd; g.fillRect(0,0,128,128);
   return new THREE.CanvasTexture(c);
 }
-let TEX_GLOW, TEX_SMOKE;
+let TEX_GLOW, TEX_SMOKE, TEX_SHADOW;
+function shadowTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=64; const g=c.getContext('2d');
+  const grd=g.createRadialGradient(32,32,0,32,32,32);
+  grd.addColorStop(0,'rgba(0,0,0,0.55)'); grd.addColorStop(0.6,'rgba(0,0,0,0.28)'); grd.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=grd; g.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+}
 
 // Wet asphalt: dark noisy surface with cracks, faded lane tyre-streaks  (+ roughness map with puddles)
 function asphaltTextures(){
@@ -1146,10 +1153,13 @@ function carNumberTexture(n){
 function makeCarMesh(color,number,shape){
   shape=shape||'gt';
   const g=new THREE.Group();
-  const paint=new THREE.MeshPhysicalMaterial({color,metalness:0.35,roughness:0.32,clearcoat:1,clearcoatRoughness:0.22,envMapIntensity:1.3,emissive:color,emissiveIntensity:0.05});
+  const paint=new THREE.MeshStandardMaterial({color,metalness:0.55,roughness:0.3,envMapIntensity:1.2,emissive:color,emissiveIntensity:0.05});
   const dark=new THREE.MeshStandardMaterial({color:0x16161f,metalness:0.6,roughness:0.4});
   const chrome=new THREE.MeshStandardMaterial({color:0xcfd6e6,metalness:0.95,roughness:0.3});
-  const glassMat=new THREE.MeshPhysicalMaterial({color:0x0a0e16,metalness:0.1,roughness:0.06,clearcoat:1,clearcoatRoughness:0.08,envMapIntensity:1.6,transparent:true,opacity:0.55});
+  const glassMat=new THREE.MeshStandardMaterial({color:0x0a0e16,metalness:0.2,roughness:0.08,envMapIntensity:1.4,transparent:true,opacity:0.55});
+  // cheap fake ground shadow (replaces real-time shadows)
+  const blob=new THREE.Mesh(new THREE.PlaneGeometry(7.5,5),new THREE.MeshBasicMaterial({map:TEX_SHADOW,transparent:true,opacity:0.6,depthWrite:false}));
+  blob.rotation.x=-Math.PI/2; blob.position.y=0.04; g.add(blob);
   const solids=[];
   const add=(m,s=true)=>{ g.add(m); if(s) solids.push(m); return m; };
   const box=(w,h,d,r)=>boxGeo(w,h,d,r);
@@ -1737,7 +1747,7 @@ function slowmo(){ slowmoT=0.3; }
 
 /* Adaptive resolution — keeps the frame-rate smooth by trading a little sharpness
    when the GPU is struggling, and restoring it when there's headroom. */
-const perf={frames:0,last:undefined,pr:Math.min(devicePixelRatio,QUALITY.pixelRatioCap),min:0.6};
+const perf={frames:0,last:undefined,pr:Math.min(devicePixelRatio,QUALITY.pixelRatioCap),min:0.55};
 function applyPixelRatio(){
   renderer.setPixelRatio(perf.pr);
   if(composer) composer.setPixelRatio(perf.pr);
@@ -1751,8 +1761,8 @@ function updatePerf(){
     const fps=perf.frames*1000/(now-perf.last); perf.frames=0; perf.last=now;
     const cap=Math.min(devicePixelRatio,QUALITY.pixelRatioCap);
     let np=perf.pr;
-    if(fps<52) np=Math.max(perf.min, perf.pr-0.12);          // struggling -> drop resolution
-    else if(fps>58 && perf.pr<cap) np=Math.min(cap, perf.pr+0.06); // headroom -> recover
+    if(fps<55) np=Math.max(perf.min, perf.pr-0.14);          // struggling -> drop resolution faster
+    else if(fps>59 && perf.pr<cap) np=Math.min(cap, perf.pr+0.05); // only recover with real headroom
     if(Math.abs(np-perf.pr)>0.001){ perf.pr=np; applyPixelRatio(); }
   }
 }
@@ -2061,7 +2071,7 @@ function wireButtons(){
 async function boot(){
   // ---- ESSENTIALS: get to a playable state first, so Start always works ----
   try{
-    TEX_GLOW=glowTexture(); TEX_SMOKE=smokeTexture();
+    TEX_GLOW=glowTexture(); TEX_SMOKE=smokeTexture(); TEX_SHADOW=shadowTexture();
     initRenderer();
     clock=new THREE.Clock();
     try{ const m=await import('three/addons/geometries/RoundedBoxGeometry.js'); RoundedBox=m.RoundedBoxGeometry; }catch(e){ RoundedBox=null; }
