@@ -454,9 +454,10 @@ const _col=new THREE.Color(), _col2=new THREE.Color();
 const _m=new THREE.Matrix4(), _q=new THREE.Quaternion(), _e=new THREE.Euler(), _sc=new THREE.Vector3();
 let weather={rain:0,tgtRain:0,tod:0}, weatherGrip=1, willRain=false, rainAtFrac=0.5, rainAnnounced=false;
 let traffic=[], trafficMesh=null;
-const REPLAY_HZ=20, REPLAY_SECS=22, REPLAY_MAX=REPLAY_HZ*REPLAY_SECS;
+const REPLAY_HZ=20, REPLAY_SECS=30, REPLAY_MAX=REPLAY_HZ*REPLAY_SECS;
 let replayFrames=[], replayHead=0, replayCount=0, replayAcc=0, replayCarN=0;
 let replayT=0, replaySpeed=1, replayCamT=0, replayShot=0;
+let replaySeq=0, replayEvents=[], replaySeqStart=0, replayEvIdx=0, replaySlowT=0;
 
 let renderer, scene, camera, composer, bloomPass, fxaaPass, useBloom=false;
 let moon=null, envRT=null, rainSystem=null, lightningT=6, RoundedBox=null;
@@ -1263,7 +1264,7 @@ function updateTraffic(dt){
         const into=c.vel.dot(_s1); if(into<0) c.vel.addScaledVector(_s1,-into*1.1); c.vel.multiplyScalar(0.82);
         if(c.isPlayer){ camShakeAdd(0.4); dmgFlash(0.2); } }
       else if(c.isPlayer){ if(d<7 && player.speed>28 && tr.nmReady){ tr.nmReady=false;
-          player.nitro=Math.min(1,player.nitro+0.12); player.points+=40; announce('NEAR MISS!','#5dff8f'); }
+          player.nitro=Math.min(1,player.nitro+0.12); player.points+=40; announce('NEAR MISS!','#5dff8f'); addReplayEvent('nearmiss'); }
         if(d>14) tr.nmReady=true; }
     } }
   }
@@ -1583,6 +1584,10 @@ class Car{
     if(this.boostT>0 && Math.random()<0.75){
       fx.smoke(this.pos.clone().addScaledVector(this.forward(),-3.7).setY(1),0xff7722,2.4,true);
     }
+    // engine smoke when badly damaged
+    if(this.hp<CFG.MAX_HP*0.35 && !this.airborne && Math.random()<0.2){
+      fx.smoke(this.pos.clone().addScaledVector(this.forward(),2.4).setY(1.2), this.hp<CFG.MAX_HP*0.18?0x1a1a1a:0x555560, 2.3, false);
+    }
     // tyre water spray on the wet road
     if(!this.airborne && this.speed>24 && Math.random()<0.4){
       const side=new THREE.Vector3().crossVectors(this.forward(),UP);
@@ -1784,8 +1789,11 @@ function applyDamage(car,amount,attacker){
 }
 function destroyCar(car,attacker){
   if(car.mode==='dead') return;
-  fx.explosion(car.pos.clone().setY(1.5),18); fx.debris(car.pos.clone().setY(1.5),car.color); sfx.explosion();
-  camShakeAdd(car.isPlayer?1.4:(car.pos.distanceTo(player.pos)<60?0.7:0));
+  const ep=car.pos.clone().setY(1.5);
+  fx.explosion(ep,22); fx.debris(ep,car.color); fx.debris(ep.clone().setY(0.8),0x333333); fx.ring(ep.clone().setY(0.4),0xff6a22,20); sfx.explosion();
+  camShakeAdd(car.isPlayer?1.9:(car.pos.distanceTo(player.pos)<70?0.9:0));
+  if(car.isPlayer) dmgFlash(0.6);
+  addReplayEvent(car.isPlayer?'crash':'kill');
   // brief burning wreck left at the spot
   const wp=car.pos.clone().setY(0.6); let bt=0;
   const burn=setInterval(()=>{ bt++; if(bt>14||state!=='playing'){clearInterval(burn);return;}
@@ -1796,7 +1804,7 @@ function destroyCar(car,attacker){
     const gained=CFG.BOUNTY_BASE + (wasLeader?Math.floor(car.bountyHold):0);
     attacker.points+=gained; attacker.kills++;
     attacker.boostT=CFG.BOOST_TIME; if(attacker.isPlayer) sfx.boost();
-    if(wasLeader){ attacker.points+=200; if(attacker.isPlayer){ banner('BOUNTY STOLEN! +'+gained,'#ffcf3a'); slowmo(); }
+    if(wasLeader){ attacker.points+=200; addReplayEvent('bounty'); if(attacker.isPlayer){ banner('BOUNTY STOLEN! +'+gained,'#ffcf3a'); slowmo(); }
       feed(`<span style="color:#ffcf3a">${attacker.name}</span> stole ${car.name}'s bounty!`); }
     else { feed(`<span style="color:${hex(attacker.color)}">${attacker.name}</span> wrecked <span style="color:${hex(car.color)}">${car.name}</span>`); }
     if(attacker.isPlayer && !wasLeader){ banner('WRECKED! +'+gained,'#17e6ff'); slowmo(); }
@@ -2103,7 +2111,7 @@ function startCountdown(){
     else if(n===0){ popCount('GO!'); tone(880,0.4,'square',0.25); }
     else { clearInterval(iv); cd.classList.add('hidden'); state='playing'; raceStartClock=performance.now(); lapStartTime=raceStartClock; lastLapTime=0; prevLeaderIsPlayer=false;
       weather.rain=0; weather.tgtRain=0; weather.tod=0; weatherGrip=1; willRain=Math.random()<0.35; rainAtFrac=rand(0.3,0.6); rainAnnounced=false; resetTraffic(); resetProps();
-      replayHead=0; replayCount=0; replayAcc=0;
+      replayHead=0; replayCount=0; replayAcc=0; replaySeq=0; replayEvents=[];
       // launch: engines bark and the camera kicks, but speed builds naturally (no instant boost)
       sfx.boost(); camShakeAdd(0.5); camera.fov=84; camera.updateProjectionMatrix();
     } },800);
@@ -2249,12 +2257,15 @@ function recordReplay(dt){
   const n=cars.length; replayCarN=n;
   let f=replayFrames[replayHead]; if(!f || f.length!==n*4){ f=new Float32Array(n*4); replayFrames[replayHead]=f; }
   for(let i=0;i<n;i++){ const c=cars[i]; f[i*4]=c.pos.x; f[i*4+1]=c.y; f[i*4+2]=c.pos.z; f[i*4+3]=c.yaw; }
-  replayHead=(replayHead+1)%REPLAY_MAX; replayCount=Math.min(replayCount+1,REPLAY_MAX);
+  replayHead=(replayHead+1)%REPLAY_MAX; replayCount=Math.min(replayCount+1,REPLAY_MAX); replaySeq++;
 }
+function addReplayEvent(type){ if(state!=='playing') return; replayEvents.push({seq:replaySeq,type}); if(replayEvents.length>80) replayEvents.shift(); }
 function replayGet(k){ const base=(replayHead-replayCount+REPLAY_MAX*2)%REPLAY_MAX; return replayFrames[(base+k)%REPLAY_MAX]; }
 function startReplay(){
   if(replayCount<REPLAY_HZ) return;      // need ~1s of footage
-  stateBeforeReplay=state; state='replay'; replayT=0; replaySpeed=1; replayCamT=0; replayShot=0;
+  stateBeforeReplay=state; state='replay'; replayT=0; replaySpeed=1; replayCamT=0; replayShot=0; replaySlowT=0;
+  replaySeqStart=replaySeq-replayCount;
+  replayEvents=replayEvents.filter(e=>e.seq>=replaySeqStart).sort((a,b)=>a.seq-b.seq); replayEvIdx=0;
   el('results').classList.add('hidden'); el('hud').classList.add('hidden');
   el('letterbox').classList.add('on'); banner('REPLAY','#fff');
 }
@@ -2274,6 +2285,12 @@ function updateReplay(dt){
     let dy=b[i*4+3]-a[i*4+3]; while(dy>Math.PI)dy-=6.2832; while(dy<-Math.PI)dy+=6.2832; const yaw=a[i*4+3]+dy*frac;
     c.mesh.visible=true; c.mesh.position.set(x,y,z); c.mesh.rotation.set(0,yaw,0);
     c.pos.set(x,0,z); c.y=y; c.yaw=yaw; } }
+  // event-driven cut: when playback passes a crash/kill/bounty/near-miss, cut + slow-mo
+  if(replayEvIdx<replayEvents.length && replayEvents[replayEvIdx].seq <= replaySeqStart+k){
+    const ev=replayEvents[replayEvIdx];
+    while(replayEvIdx<replayEvents.length && replayEvents[replayEvIdx].seq <= replaySeqStart+k) replayEvIdx++;
+    replayShot=(ev.type==='crash'||ev.type==='kill')?3:1; replayCamT=2.8; replaySlowT=1.1;
+  }
   replayCamT-=dt; if(replayCamT<=0){ replayCamT=rand(2.2,3.4); replayShot=(replayShot+1)%4; }
   const p=cars[0], px=p.mesh.position.x, py=p.mesh.position.y, pz=p.mesh.position.z, yaw=p.yaw, fx=Math.sin(yaw), fz=Math.cos(yaw);
   let cx,cy,cz;
@@ -2284,7 +2301,8 @@ function updateReplay(dt){
   camera.position.lerp(_s1.set(cx,cy,cz), clamp((replayShot===2?2:4)*dt,0,1));
   camera.lookAt(px,py+1.1,pz);
   camera.fov+=(55-camera.fov)*clamp(3*dt,0,1); camera.updateProjectionMatrix();
-  replaySpeed=(k>replayCount*0.82)?0.35:1;   // slow-mo finish
+  if(replaySlowT>0) replaySlowT-=dt;
+  replaySpeed = replaySlowT>0 ? 0.3 : (k>replayCount*0.85 ? 0.4 : 1);   // slow-mo on events + finish
 }
 
 /* =====================================================================
