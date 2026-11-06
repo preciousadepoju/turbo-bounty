@@ -230,6 +230,9 @@
   #count{font-size:clamp(90px,26vw,260px);font-weight:900;color:#fff;
     filter:drop-shadow(0 0 40px var(--neon-cyan));}
   .res-btns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;}
+  .confetti{position:absolute;top:-24px;width:9px;height:14px;border-radius:2px;pointer-events:none;z-index:1;
+    animation:confall 2.3s ease-in forwards;}
+  @keyframes confall{to{top:112%;opacity:.15;}}
   #results h2{font-size:clamp(30px,6vw,56px);font-weight:900;letter-spacing:3px;color:var(--neon-gold);
     filter:drop-shadow(0 0 18px var(--neon-gold));}
   #resTable{margin-top:22px;font-size:clamp(14px,2.2vw,20px);border-collapse:collapse;min-width:min(560px,92vw);}
@@ -606,13 +609,14 @@ function tone(freq,dur,type,gain,toFreq){
   o.connect(g); g.connect(master); o.start(); o.stop(AC.currentTime+dur);
 }
 const sfx={
-  gun(){ noise(0.06,1400,'bandpass',0.18,0.5); tone(220,0.05,'square',0.05); },
-  explosion(){ noise(0.55,500,'lowpass',0.5,0.15); tone(70,0.5,'sine',0.4,32); },
+  gun(){ noise(0.06,1500,'bandpass',0.2,0.5); tone(220,0.05,'square',0.05); tone(130,0.04,'square',0.07,90); },
+  explosion(){ noise(0.6,520,'lowpass',0.55,0.12); noise(0.08,3200,'highpass',0.22); tone(70,0.5,'sine',0.4,30); tone(42,0.75,'sine',0.32,20); },
   pickup(){ tone(520,0.12,'square',0.14,920); },
   boost(){ tone(200,0.4,'sawtooth',0.14,700); },
   hit(){ noise(0.05,2600,'bandpass',0.08); },
   skid(){ /* handled via engine filter wobble; light */ },
   ghost(){ tone(900,0.3,'sine',0.12,180); },
+  win(){ [523,659,784,1047,1047].forEach((f,i)=> setTimeout(()=>{ tone(f,0.28,'square',0.13); tone(f/2,0.28,'sawtooth',0.06); }, i*150)); tone(131,1.0,'sawtooth',0.08,262); },
 };
 const SCALE=[0,3,5,7,10,12,15]; const ROOT=110;
 // 16-step driving loop: kick + hi-hat + filtered bass + lead (synth only, lightweight)
@@ -1115,12 +1119,24 @@ function buildCity(theme,group,bridge){
     poles.push({pos:V3(base.x,5,base.z)}); lamps.push({pos:V3(base.x,10,base.z)}); }
   instanced(group,new THREE.CylinderGeometry(0.3,0.3,10,6),new THREE.MeshStandardMaterial({color:0x14141c,metalness:0.6,roughness:0.5}),poles);
   instanced(group,new THREE.SphereGeometry(0.7,8,8),new THREE.MeshBasicMaterial({color:theme.accentA}),lamps);
-  if(bridge){ // yellow minibuses parked on the shoulders
+  if(bridge){ // LAGOS: parked minibuses + palms + roadside stalls
     const buses=[];
     for(let i=4;i<N;i+=22){ const s=samples[i], sgn=(i%2===0)?1:-1;
       const base=s.p.clone().addScaledVector(s.side,sgn*(CFG.ROAD_HALF-1.6));
       buses.push({pos:V3(base.x,1.4,base.z),ry:Math.atan2(s.t.x,s.t.z)}); }
     instanced(group,new THREE.BoxGeometry(3,2.4,6.5),new THREE.MeshStandardMaterial({color:0xf2c21a,roughness:0.55,metalness:0.2,emissive:0x2a2100,emissiveIntensity:0.2}),buses);
+    const trunks=[],fronds=[],stalls=[],canopies=[];
+    for(let i=0;i<N;i+=12){ const s=samples[i], sgn=(i%2===0)?1:-1;
+      const base=s.p.clone().addScaledVector(s.side,sgn*(CFG.ROAD_HALF+rand(6,18)));
+      if(Math.random()<0.6){ const h=rand(5,8.5);
+        trunks.push({pos:V3(base.x,h/2,base.z),sy:h/4});
+        fronds.push({pos:V3(base.x,h,base.z),s:rand(2.4,3.4),ry:rand(0,6.28)}); }
+      else { stalls.push({pos:V3(base.x,1,base.z),ry:rand(0,6.28)});
+        canopies.push({pos:V3(base.x,2.15,base.z),ry:rand(0,6.28)}); } }
+    instanced(group,new THREE.CylinderGeometry(0.28,0.4,4,6),new THREE.MeshStandardMaterial({color:0x4a3826,roughness:0.9}),trunks);
+    instanced(group,new THREE.ConeGeometry(2,1.5,6),new THREE.MeshStandardMaterial({color:0x1f6a2e,roughness:0.8}),fronds);
+    instanced(group,new THREE.BoxGeometry(2.4,2,2),new THREE.MeshStandardMaterial({color:0x6a4a2a,roughness:0.9}),stalls);
+    instanced(group,new THREE.BoxGeometry(3,0.35,2.6),new THREE.MeshStandardMaterial({color:0xff7a3d,roughness:0.6,emissive:0x331500,emissiveIntensity:0.25}),canopies);
   }
 }
 function buildDesert(theme,group){
@@ -2018,6 +2034,11 @@ function banner(text,color){ const b=el('banner'); b.textContent=text; b.style.c
 function banner2(text,color){ // secondary, reuse feed-ish strong line
   feed('<b style="color:'+(color||'#fff')+';font-size:18px">'+text+'</b>'); }
 function announce(text,color){ banner(text,color); }
+function spawnConfetti(){ const r=el('results'); if(!r) return; const cols=['#ff5a3d','#17e6ff','#ffcf3a','#5dff8f','#ff2bd6','#ffffff'];
+  for(let i=0;i<30;i++){ const d=document.createElement('div'); d.className='confetti';
+    d.style.left=rand(2,98)+'%'; d.style.background=cols[(Math.random()*cols.length)|0];
+    d.style.animationDelay=(Math.random()*0.6).toFixed(2)+'s'; d.style.transform='rotate('+(rand(0,360)|0)+'deg)';
+    r.appendChild(d); setTimeout(()=>d.remove(),3000); } }
 let driftPtsEl, driftMultEl;
 function showDrift(pts,mult){ const d=el('drift'); if(!d) return;
   if(!driftPtsEl){ d.innerHTML='<div class="dpts"></div><div class="dmult"></div>'; driftPtsEl=d.querySelector('.dpts'); driftMultEl=d.querySelector('.dmult'); }
@@ -2106,6 +2127,7 @@ function endRace(){
     if(last){
       const champ=standings[0];
       el('resTitle').textContent = champ.isPlayer?'🏆 YOU ARE THE CHAMPION!':'CHAMPION — '+champ.name;
+      if(champ.isPlayer){ sfx.win(); spawnConfetti(); }
       saveBestChamp(champPoints[player.idx]); renderBests();
       if(note) note.textContent='Final standings after '+THEMES.length+' rounds. You finished '+pr+(ord[pr]||'th')+' this round.'+timeStr;
       btn.textContent='PLAY AGAIN';
@@ -2118,6 +2140,7 @@ function endRace(){
     }
   } else {
     el('resTitle').textContent = pr===1?'🏆 YOU WON!':'RACE OVER — '+pr+(ord[pr]||'th')+' PLACE';
+    if(pr===1){ sfx.win(); spawnConfetti(); }
     let html='<tr><th>#</th><th>Racer</th><th>Kills</th><th>Bounty</th><th>Finish</th><th>Total</th></tr>';
     sorted.forEach((c,i)=>{ const fin=FINISH_PTS[i]||100, bounty=Math.floor(c.bountyHold), total=c.points+bounty+fin;
       html+=`<tr class="${c.isPlayer?'me-row':''}"><td>${i+1}</td><td style="color:${hex(c.color)}">${c.name}</td>`+
